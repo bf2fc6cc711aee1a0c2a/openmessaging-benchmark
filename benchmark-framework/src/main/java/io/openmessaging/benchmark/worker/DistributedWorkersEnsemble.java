@@ -26,7 +26,6 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -95,7 +94,7 @@ public class DistributedWorkersEnsemble implements Worker {
     @Override
     public List<Topic> createTopics(TopicsInfo topicsInfo) throws IOException {
         // Create all topics from a single worker node
-        return (List<Topic>) post(workers.get(0), "/create-topics", writer.writeValueAsBytes(topicsInfo),
+        return post(workers.get(0), "/create-topics", writer.writeValueAsBytes(topicsInfo),
                 new TypeReference<List<Topic>>() {
                 }).join();
     }
@@ -117,24 +116,14 @@ public class DistributedWorkersEnsemble implements Worker {
 
     @Override
     public void createProducers(List<String> topics) {
-        // topics is a normalized list i.e. it accounts for duplicated entries in case
-        // of m topics and n producers where m < n. In this case, map the topics as is
-        // to honor the number of producers per topic configured for the workload
-        List<List<String>> topicsPerProducer;
-        if (topics.size() <= producerWorkers.size()) {
-            topicsPerProducer = new ArrayList<>();
-            for (String topic : topics) {
-                List<String> topicList = new ArrayList<>();
-                topicList.add(topic);
-                topicsPerProducer.add(topicList);
-            }
-        } else {
-            topicsPerProducer = ListPartition.partitionList(topics, producerWorkers.size());
-        }
+        List<List<String>> topicsPerProducer = ListPartition.partitionList(topics, producerWorkers.size());
 
         Map<String, List<String>> topicsPerProducerMap = Maps.newHashMap();
         int i = 0;
         for (List<String> assignedTopics : topicsPerProducer) {
+            if (assignedTopics.isEmpty()) {
+                continue;
+            }
             topicsPerProducerMap.put(producerWorkers.get(i++), assignedTopics);
         }
 
@@ -206,7 +195,7 @@ public class DistributedWorkersEnsemble implements Worker {
             ConsumerAssignment individualAssignement = new ConsumerAssignment();
             individualAssignement.topicsSubscriptions = tsl;
             topicsPerWorkerMap.put(consumerWorkers.get(i++), individualAssignement);
-            if (individualAssignement.topicsSubscriptions.isEmpty()) {
+            if (!individualAssignement.topicsSubscriptions.isEmpty()) {
                 assignmemts++;
             }
         }
