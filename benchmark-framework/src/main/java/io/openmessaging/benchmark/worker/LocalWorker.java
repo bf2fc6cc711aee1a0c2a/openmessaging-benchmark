@@ -100,11 +100,11 @@ public class LocalWorker implements Worker, ConsumerCallback {
     private final Recorder endToEndCumulativeLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(12), 5);
     private final OpStatsLogger endToEndLatencyStats;
 
-    private boolean testCompleted = false;
+    private volatile boolean testCompleted = false;
 
-    private boolean consumersArePaused = false;
+    private volatile boolean consumersArePaused = false;
 
-    private boolean producersArePaused = false;
+    private volatile boolean producersArePaused = false;
 
     public LocalWorker() {
         this(NullStatsLogger.INSTANCE);
