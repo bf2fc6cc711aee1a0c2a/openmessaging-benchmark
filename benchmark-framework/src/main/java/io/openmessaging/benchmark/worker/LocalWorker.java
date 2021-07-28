@@ -23,12 +23,10 @@ import static java.util.stream.Collectors.toList;
 import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -102,11 +100,11 @@ public class LocalWorker implements Worker, ConsumerCallback {
     private final Recorder endToEndCumulativeLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(12), 5);
     private final OpStatsLogger endToEndLatencyStats;
 
-    private boolean testCompleted = false;
+    private volatile boolean testCompleted = false;
 
-    private boolean consumersArePaused = false;
+    private volatile boolean consumersArePaused = false;
 
-    private boolean producersArePaused = false;
+    private volatile boolean producersArePaused = false;
 
     public LocalWorker() {
         this(NullStatsLogger.INSTANCE);
@@ -201,20 +199,9 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
     @Override
     public void startLoad(ProducerWorkAssignment producerWorkAssignment) {
-        int processors = Runtime.getRuntime().availableProcessors();
-
         rateLimiter.setRate(producerWorkAssignment.publishRate);
 
-        Map<Integer, List<BenchmarkProducer>> processorAssignemnt = new TreeMap<>();
-
-        int processorIdx = 0;
-        for (BenchmarkProducer p : producers) {
-            processorAssignemnt.computeIfAbsent(processorIdx, x -> new ArrayList<BenchmarkProducer>()).add(p);
-
-            processorIdx = (processorIdx + 1) % processors;
-        }
-
-        processorAssignemnt.values().forEach(producers -> submitProducersToExecutor(producers,
+        producers.stream().map(Collections::singletonList).forEach(producers -> submitProducersToExecutor(producers,
                 KeyDistributor.build(producerWorkAssignment.keyDistributorType), producerWorkAssignment.payloadData));
     }
 
