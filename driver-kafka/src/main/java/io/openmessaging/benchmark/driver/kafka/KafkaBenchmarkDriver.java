@@ -24,6 +24,7 @@ import java.io.StringReader;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -89,13 +90,13 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
             // List existing topics
             ListTopicsResult result = admin.listTopics();
             try {
-                Set<String> topics = result.names().get();
+                List<String> topics = result.names().get().stream().filter(name -> name.startsWith(getTopicNamePrefix())).collect(Collectors.toList());
                 // Delete all existing topics
                 DeleteTopicsResult deletes = admin.deleteTopics(topics);
                 deletes.all().get();
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
-                throw new IOException(e);
+                // don't throw an exception, this is issued against each worker, so some will fail
             }
         }
     }

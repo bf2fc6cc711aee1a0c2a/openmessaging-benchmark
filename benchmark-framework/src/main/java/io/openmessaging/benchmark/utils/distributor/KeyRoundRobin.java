@@ -18,18 +18,14 @@
  */
 package io.openmessaging.benchmark.utils.distributor;
 
-import javax.annotation.concurrent.NotThreadSafe;
+import java.util.concurrent.atomic.AtomicInteger;
 
-@NotThreadSafe
 public class KeyRoundRobin extends KeyDistributor {
 
-    private int currentIndex = 0;
+    private static AtomicInteger currentIndex = new AtomicInteger();
 
     @Override
     public String next() {
-        if (++currentIndex >= getLength()) {
-            currentIndex = 0;
-        }
-        return get(currentIndex);
+        return get(Math.abs(currentIndex.getAndIncrement()) % getLength());
     }
 }
