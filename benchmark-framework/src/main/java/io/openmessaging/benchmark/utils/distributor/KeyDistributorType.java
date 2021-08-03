@@ -28,7 +28,7 @@ public enum KeyDistributorType {
     NO_KEY,
 
     /**
-     * Genarate a finite number of "keys" and cycle through them in round-robin fashion
+     * Generate a finite number of "keys" and cycle through them in round-robin fashion
      */
     KEY_ROUND_ROBIN,
 
