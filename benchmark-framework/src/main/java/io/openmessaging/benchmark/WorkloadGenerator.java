@@ -275,6 +275,12 @@ public class WorkloadGenerator implements AutoCloseable {
                     }
                     currentRate = maxRate * multiplier;
                 }
+
+                if (maxRate/currentRate > .99) {
+                    log.info("Not making progress, exiting");
+                    runCompleted = true;
+                    break;
+                }
             }
 
             worker.adjustPublishRate(currentRate);
@@ -389,7 +395,7 @@ public class WorkloadGenerator implements AutoCloseable {
         result.driver = driverName;
 
         long due = System.currentTimeMillis() + STATS_PERIOD;
-        while (true) {
+        while (!runCompleted) {
             try {
                 long remaining = due - System.currentTimeMillis();
                 if (remaining > 0) {
