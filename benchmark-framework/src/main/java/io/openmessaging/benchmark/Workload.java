@@ -43,6 +43,8 @@ public class Workload {
 
     public int producerRate;
 
+    public boolean findSustainableRate;
+
     /**
      * If the consumer backlog is > 0, the generator will accumulate messages until
      * the requested amount of storage is retained and then it will start the

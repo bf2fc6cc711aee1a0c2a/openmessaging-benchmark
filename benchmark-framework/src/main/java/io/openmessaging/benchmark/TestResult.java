@@ -73,4 +73,6 @@ public class TestResult {
     public double aggregatedEndToEndLatency999pct;
     public double aggregatedEndToEndLatency9999pct;
     public double aggregatedEndToEndLatencyMax;
+
+    public Double maxSustainableRate;
 }

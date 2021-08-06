@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -52,6 +53,8 @@ public class WorkloadGenerator implements AutoCloseable {
     private final String driverName;
     private final Workload workload;
     private final Worker worker;
+
+    public static final int CATCHUP_MS_TOLERANCE = 25;
 
     private final ExecutorService executor = Executors
             .newCachedThreadPool(new DefaultThreadFactory("messaging-benchmark"));
@@ -86,20 +89,15 @@ public class WorkloadGenerator implements AutoCloseable {
             // ensureTopicsAreReady();
         }
 
-        if (workload.producerRate > 0) {
+        Future<Double> maxRateFuture = null;
+
+        if (workload.producerRate > 0 && !workload.findSustainableRate) {
             targetPublishRate = workload.producerRate;
         } else {
-            // Producer rate is 0 and we need to discover the sustainable rate
-            targetPublishRate = 10000;
+            // start at the supplied rate
+            targetPublishRate = workload.producerRate == 0 ? 10000 : workload.producerRate;
 
-            executor.execute(() -> {
-                // Run background controller to adjust rate
-                try {
-                    findMaximumSustainableRate(targetPublishRate);
-                } catch (IOException e) {
-                    log.warn("Failure in finding max sustainable rate", e);
-                }
-            });
+            maxRateFuture = executor.submit(() -> findMaximumSustainableRate(targetPublishRate));
         }
 
         final PayloadReader payloadReader = new FilePayloadReader(workload.messageSize);
@@ -136,6 +134,9 @@ public class WorkloadGenerator implements AutoCloseable {
             worker.stopAll();
         } catch (Exception e) {
             log.error("Unable to stop workload - {}", e.toString());
+        }
+        if (maxRateFuture != null) {
+            result.maxSustainableRate = maxRateFuture.get();
         }
         return result;
     }
@@ -174,27 +175,25 @@ public class WorkloadGenerator implements AutoCloseable {
      * Adjust the publish rate to a level that is sustainable, meaning that we can
      * consume all the messages that are being produced
      */
-    private void findMaximumSustainableRate(double currentRate) throws IOException {
-        double maxRate = Double.MAX_VALUE; // Discovered max sustainable rate
-        double minRate = 0.1;
+    double findMaximumSustainableRate(double currentRate) throws IOException, InterruptedException {
+        double maxRate = 0; // Discovered max sustainable rate
 
         CountersStats stats = worker.getCountersStats();
 
         long localTotalMessagesSentCounter = stats.messagesSent;
         long localTotalMessagesReceivedCounter = stats.messagesReceived;
 
-        int controlPeriodMillis = 3000;
+        int controlPeriodMillis = 10000;
         long lastControlTimestamp = System.nanoTime();
 
         int successfulPeriods = 0;
+        boolean warming = true;
+        Long windowStartTotalMessagesSentCounter = null;
+        Long windowStartTimestamp = null;
 
         while (!runCompleted) {
             // Check every few seconds and adjust the rate
-            try {
-                Thread.sleep(controlPeriodMillis);
-            } catch (InterruptedException e) {
-                return;
-            }
+            Thread.sleep(controlPeriodMillis);
 
             // Consider multiple copies when using multiple subscriptions
             stats = worker.getCountersStats();
@@ -220,65 +219,84 @@ public class WorkloadGenerator implements AutoCloseable {
             lastControlTimestamp = currentTime;
 
             if (log.isDebugEnabled()) {
-                log.debug("Current rate: {} -- Publish rate {} -- Consume Rate: {} -- min-rate: {} -- max-rate: {}",
+                log.debug("Current rate: {} -- Publish rate {} -- Consume Rate: {} -- max-rate: {}",
                         dec.format(currentRate), dec.format(publishRateInLastPeriod),
-                        dec.format(receiveRateInLastPeriod), dec.format(minRate), dec.format(maxRate));
+                        dec.format(receiveRateInLastPeriod), dec.format(maxRate));
             }
 
-            if (publishRateInLastPeriod < currentRate * 0.95) {
-                // Producer is not able to publish as fast as requested
-                maxRate = currentRate * 1.1;
-                currentRate = minRate + (currentRate - minRate) / 2;
+            if (warming) {
+                warming = false;
+                continue;
+            }
 
-                log.debug("Publishers are not meeting requested rate. reducing to {}", currentRate);
-            } else if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98) {
-                // If the consumers are building backlog, we should slow down publish rate
-                maxRate = currentRate;
-                currentRate = minRate + (currentRate - minRate) / 2;
-                log.debug("Consumers are not meeting requested rate. reducing to {}", currentRate);
+            boolean success = true;
+            // If the consumers are building backlog, we should slow down publish rate
+            if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98) {
+                currentRate = (maxRate + currentRate) / 2;
+                log.info("Consumers are not meeting requested rate. reducing to {}", dec.format(currentRate));
+                worker.adjustPublishRate(currentRate);
+                success = false;
+            }
 
+            // prevents there from ever being more than ~25 ms of catch-up
+            if (workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived > publishRateInLastPeriod / (1000 / CATCHUP_MS_TOLERANCE)) {
                 // Slows the publishes to let the consumer time to absorb the backlog
-                worker.adjustPublishRate(minRate / 10);
-                while (true) {
+                worker.adjustPublishRate(maxRate / 10);
+                log.info("Working down the backlog");
+                while (!runCompleted) {
                     stats = worker.getCountersStats();
                     long backlog = workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived;
-                    if (backlog < 1000) {
+                    if (backlog < publishRateInLastPeriod / (10000 / CATCHUP_MS_TOLERANCE)) {
                         break;
                     }
 
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        return;
-                    }
+                    Thread.sleep(100);
                 }
 
-                log.debug("Resuming load at reduced rate");
-                worker.adjustPublishRate(currentRate);
-
-                try {
-                    // Wait some more time for the publish rate to catch up
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    return;
+                if (success) {
+                    currentRate = (maxRate + 2*currentRate) / 3;
+                    log.info("Resuming load at a slightly reduced rate {}", dec.format(currentRate));
+                    success = false;
                 }
+                warming = true;
+            }
 
-                stats = worker.getCountersStats();
-                localTotalMessagesSentCounter = stats.messagesSent;
-                localTotalMessagesReceivedCounter = stats.messagesReceived;
-
-            } else if (currentRate < maxRate) {
-                minRate = currentRate;
-                currentRate = Math.min(currentRate * 2, maxRate);
-                log.debug("No bottleneck found, increasing the rate to {}", currentRate);
-            } else if (++successfulPeriods > 3) {
-                minRate = currentRate * 0.95;
-                maxRate = currentRate * 1.05;
+            if (!success) {
                 successfulPeriods = 0;
+                if (maxRate/currentRate > .99) {
+                    log.info("Not making progress, exiting");
+                    runCompleted = true;
+                    break;
+                }
+            } else {
+                if (successfulPeriods == 0) {
+                    windowStartTotalMessagesSentCounter = localTotalMessagesSentCounter;
+                    windowStartTimestamp = lastControlTimestamp;
+                }
+                if (++successfulPeriods > 2) {
+                    successfulPeriods = 0;
+                    double multiplier = 1.1;
+                    double windowRate = (localTotalMessagesSentCounter - windowStartTotalMessagesSentCounter)
+                            / (double) (lastControlTimestamp - windowStartTimestamp) * TimeUnit.SECONDS.toNanos(1);
+
+                    if (windowRate > maxRate) {
+                        // step by a similar ratio - this logic doesn't like bursting
+                        if (maxRate == 0) {
+                            multiplier = 2;
+                        } else {
+                            multiplier = Math.max(multiplier, windowRate/maxRate);
+                        }
+                        maxRate = windowRate;
+                        log.info("At max {}", dec.format(maxRate));
+                    }
+                    currentRate = maxRate * multiplier;
+                }
             }
 
             worker.adjustPublishRate(currentRate);
         }
+
+        return maxRate;
     }
 
     @Override
@@ -387,7 +405,7 @@ public class WorkloadGenerator implements AutoCloseable {
         result.driver = driverName;
 
         long due = System.currentTimeMillis() + STATS_PERIOD;
-        while (true) {
+        while (!runCompleted) {
             try {
                 long remaining = due - System.currentTimeMillis();
                 if (remaining > 0) {
