@@ -41,4 +41,6 @@ public class PeriodStats {
     @JsonIgnore
     public Histogram endToEndLatency = HistogramFactory.create(TimeUnit.HOURS.toMicros(12));
     public byte[] endToEndLatencyBytes;
+
+    public double elapsedMillis;
 }

@@ -106,6 +106,10 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
     private volatile boolean producersArePaused = false;
 
+    private volatile long lastPeriod;
+
+    private final long startCounter = System.currentTimeMillis();
+
     public LocalWorker() {
         this(NullStatsLogger.INSTANCE);
     }
@@ -203,6 +207,8 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
         producers.stream().map(Collections::singletonList).forEach(producers -> submitProducersToExecutor(producers,
                 KeyDistributor.build(producerWorkAssignment.keyDistributorType), producerWorkAssignment.payloadData));
+
+        lastPeriod = System.currentTimeMillis();
     }
 
     @Override
@@ -274,6 +280,10 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
         stats.publishLatency = publishLatencyRecorder.getIntervalHistogram();
         stats.endToEndLatency = endToEndLatencyRecorder.getIntervalHistogram();
+
+        long now = System.currentTimeMillis();
+        stats.elapsedMillis = now - this.lastPeriod;
+        this.lastPeriod = now;
         return stats;
     }
 
@@ -290,6 +300,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
         CountersStats stats = new CountersStats();
         stats.messagesSent = totalMessagesSent.sum();
         stats.messagesReceived = totalMessagesReceived.sum();
+        stats.elapsedMillis = System.currentTimeMillis() - startCounter;
         return stats;
     }
 

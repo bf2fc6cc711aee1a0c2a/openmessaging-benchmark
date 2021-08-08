@@ -184,12 +184,12 @@ public class WorkloadGenerator implements AutoCloseable {
         long localTotalMessagesReceivedCounter = stats.messagesReceived;
 
         int controlPeriodMillis = 10000;
-        long lastControlTimestamp = System.nanoTime();
+        double lastControlTimestamp = stats.elapsedMillis;
 
         int successfulPeriods = 0;
         boolean warming = true;
-        Long windowStartTotalMessagesSentCounter = null;
-        Long windowStartTimestamp = null;
+        double windowStartTotalMessagesSentCounter = 0;
+        double windowStartTimestamp = 0;
 
         while (!runCompleted) {
             // Check every few seconds and adjust the rate
@@ -197,15 +197,14 @@ public class WorkloadGenerator implements AutoCloseable {
 
             // Consider multiple copies when using multiple subscriptions
             stats = worker.getCountersStats();
-            long currentTime = System.nanoTime();
+            double currentTime = stats.elapsedMillis;
             long totalMessagesSent = stats.messagesSent;
             long totalMessagesReceived = stats.messagesReceived;
             long messagesPublishedInPeriod = totalMessagesSent - localTotalMessagesSentCounter;
             long messagesReceivedInPeriod = totalMessagesReceived - localTotalMessagesReceivedCounter;
-            double publishRateInLastPeriod = messagesPublishedInPeriod / (double) (currentTime - lastControlTimestamp)
-                    * TimeUnit.SECONDS.toNanos(1);
-            double receiveRateInLastPeriod = messagesReceivedInPeriod / (double) (currentTime - lastControlTimestamp)
-                    * TimeUnit.SECONDS.toNanos(1);
+            double elapsed = (currentTime - lastControlTimestamp) / 1000d;
+            double publishRateInLastPeriod = messagesPublishedInPeriod / elapsed;
+            double receiveRateInLastPeriod = messagesReceivedInPeriod / elapsed;
 
             if (log.isDebugEnabled()) {
                 log.debug(
@@ -276,8 +275,8 @@ public class WorkloadGenerator implements AutoCloseable {
                 if (++successfulPeriods > 2) {
                     successfulPeriods = 0;
                     double multiplier = 1.1;
-                    double windowRate = (localTotalMessagesSentCounter - windowStartTotalMessagesSentCounter)
-                            / (double) (lastControlTimestamp - windowStartTimestamp) * TimeUnit.SECONDS.toNanos(1);
+                    double windowRate = (localTotalMessagesSentCounter - windowStartTotalMessagesSentCounter) * 1000d
+                            / (lastControlTimestamp - windowStartTimestamp);
 
                     if (windowRate > maxRate) {
                         // step by a similar ratio - this logic doesn't like bursting
@@ -396,7 +395,6 @@ public class WorkloadGenerator implements AutoCloseable {
         long startTime = System.nanoTime();
 
         // Print report stats
-        long oldTime = System.nanoTime();
 
         long testEndTime = testDurations > 0 ? startTime + unit.toNanos(testDurations) : Long.MAX_VALUE;
 
@@ -419,7 +417,7 @@ public class WorkloadGenerator implements AutoCloseable {
             PeriodStats stats = worker.getPeriodStats();
 
             long now = System.nanoTime();
-            double elapsed = (now - oldTime) / 1e9;
+            double elapsed = stats.elapsedMillis / 1000d;
 
             double publishRate = stats.messagesSent / elapsed;
             double publishThroughput = stats.bytesSent / elapsed / 1024 / 1024;
@@ -529,8 +527,6 @@ public class WorkloadGenerator implements AutoCloseable {
 
                 break;
             }
-
-            oldTime = now;
         }
 
         return result;

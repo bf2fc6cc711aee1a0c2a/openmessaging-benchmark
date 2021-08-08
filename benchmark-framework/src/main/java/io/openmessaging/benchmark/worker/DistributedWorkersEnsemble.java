@@ -50,6 +50,7 @@ import com.google.common.collect.Lists;
 
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
+import io.openmessaging.benchmark.WorkloadGenerator;
 import io.openmessaging.benchmark.utils.ListPartition;
 import io.openmessaging.benchmark.worker.commands.ConsumerAssignment;
 import io.openmessaging.benchmark.worker.commands.CountersStats;
@@ -60,6 +61,11 @@ import io.openmessaging.benchmark.worker.commands.TopicSubscription;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
 import static org.asynchttpclient.Dsl.*;
 
+/**
+ * for the stats elapsed values we are not trying to explicitly coordinate the sample windows,
+ * just ensure they are weighted fairly - averaging here introduces a much smaller error than attempting to
+ * track time in the {@link WorkloadGenerator}
+ */
 public class DistributedWorkersEnsemble implements Worker {
     private final static int REQUEST_TIMEOUT_MS = 300_000;
     private final static int READ_TIMEOUT_MS = 300_000;
@@ -235,6 +241,7 @@ public class DistributedWorkersEnsemble implements Worker {
             stats.bytesReceived += is.bytesReceived;
             stats.totalMessagesSent += is.totalMessagesSent;
             stats.totalMessagesReceived += is.totalMessagesReceived;
+            stats.elapsedMillis += is.elapsedMillis;
 
             try {
                 stats.publishLatency.add(Histogram.decodeFromCompressedByteBuffer(
@@ -246,6 +253,7 @@ public class DistributedWorkersEnsemble implements Worker {
                 throw new RuntimeException(e);
             }
         });
+        stats.elapsedMillis /= workers.size();
 
         return stats;
     }
@@ -286,8 +294,9 @@ public class DistributedWorkersEnsemble implements Worker {
         individualStats.forEach(is -> {
             stats.messagesSent += is.messagesSent;
             stats.messagesReceived += is.messagesReceived;
+            stats.elapsedMillis += is.elapsedMillis;
         });
-
+        stats.elapsedMillis /= workers.size();
         return stats;
     }
 
