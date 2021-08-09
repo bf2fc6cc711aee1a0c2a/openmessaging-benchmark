@@ -165,12 +165,6 @@ public class WorkerHandler {
             stats.endToEndLatencyBytes = new byte[histogramSerializationBuffer.position()];
             histogramSerializationBuffer.flip();
             histogramSerializationBuffer.get(stats.endToEndLatencyBytes);
-
-            histogramSerializationBuffer.clear();
-            stats.consumerLatency.encodeIntoCompressedByteBuffer(histogramSerializationBuffer);
-            stats.consumerLatencyBytes = new byte[histogramSerializationBuffer.position()];
-            histogramSerializationBuffer.flip();
-            histogramSerializationBuffer.get(stats.consumerLatencyBytes);
         }
 
         ctx.result(writer.writeValueAsString(stats));

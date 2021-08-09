@@ -31,15 +31,4 @@ public interface ConsumerCallback {
      *            the publish timestamp in milliseconds
      */
     void messageReceived(byte[] payload, long publishTimestamp);
-
-    public static final String FETCH_LATENCY_AVG = "fetch-latency-avg";
-
-    /**
-     * Metric published from the driver
-     * @param name
-     *           Name of the metric
-     * @param value
-     *           Value of the metric
-     */
-    void metricPublished(String name, Object value);
 }
