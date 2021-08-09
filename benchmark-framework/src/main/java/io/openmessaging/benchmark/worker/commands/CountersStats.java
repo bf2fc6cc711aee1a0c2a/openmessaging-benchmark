@@ -22,5 +22,5 @@ public class CountersStats {
     public long messagesSent;
     public long messagesReceived;
     public double elapsedMillis;
-    public double fetchLatencyAvg;
+    public Double fetchLatencyAvg;
 }

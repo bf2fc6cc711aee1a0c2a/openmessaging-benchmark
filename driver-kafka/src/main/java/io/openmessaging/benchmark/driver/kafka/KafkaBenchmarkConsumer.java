@@ -88,6 +88,7 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
             ObjectName fetchManagerName = new ObjectName("kafka.consumer:type=consumer-fetch-manager-metrics,client-id="+this.clientId);
             Object obj = mbeanServer.getAttribute(fetchManagerName, BenchmarkConsumer.FETCH_LATENCY_AVG);
             if (obj instanceof Double && !((Double)obj).isNaN()) {
+                log.info("At Driver - " + BenchmarkConsumer.FETCH_LATENCY_AVG + "=" + obj);
                 stats.put(BenchmarkConsumer.FETCH_LATENCY_AVG, obj);
             }
         } catch (Exception e) {
