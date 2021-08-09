@@ -97,7 +97,7 @@ public class WorkerHandler {
     }
 
     private void handleCreateProducers(Context ctx) throws Exception {
-        List<String> topics = (List<String>) mapper.readValue(ctx.body(), List.class);
+        List<String> topics = mapper.readValue(ctx.body(), List.class);
         log.info("Received create producers request for topics: {}", topics);
         localWorker.createProducers(topics);
     }
@@ -165,6 +165,12 @@ public class WorkerHandler {
             stats.endToEndLatencyBytes = new byte[histogramSerializationBuffer.position()];
             histogramSerializationBuffer.flip();
             histogramSerializationBuffer.get(stats.endToEndLatencyBytes);
+
+            histogramSerializationBuffer.clear();
+            stats.consumerLatency.encodeIntoCompressedByteBuffer(histogramSerializationBuffer);
+            stats.consumerLatencyBytes = new byte[histogramSerializationBuffer.position()];
+            histogramSerializationBuffer.flip();
+            histogramSerializationBuffer.get(stats.consumerLatencyBytes);
         }
 
         ctx.result(writer.writeValueAsString(stats));

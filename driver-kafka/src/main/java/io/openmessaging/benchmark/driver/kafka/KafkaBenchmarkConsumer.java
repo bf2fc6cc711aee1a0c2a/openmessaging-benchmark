@@ -18,6 +18,7 @@
  */
 package io.openmessaging.benchmark.driver.kafka;
 
+import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,6 +38,9 @@ import io.openmessaging.benchmark.driver.ConsumerCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
 public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkConsumer.class);
@@ -46,8 +50,9 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
     private final ExecutorService executor;
     private final Future<?> consumerTask;
     private volatile boolean closing = false;
+    private MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
-    public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer, ConsumerCallback callback) {
+    public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer, ConsumerCallback callback, String clientId) {
         this.consumer = consumer;
         this.executor = Executors.newSingleThreadExecutor();
 
@@ -68,6 +73,16 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
                     }
                 } catch (Exception e) {
                     log.error("exception occur while consuming message", e);
+                }
+
+                try {
+                    ObjectName fetchManagerName = new ObjectName("kafka.consumer:type=consumer-fetch-manager-metrics,client-id="+clientId);
+                    Object obj = mbeanServer.getAttribute(fetchManagerName, ConsumerCallback.FETCH_LATENCY_AVG);
+                    if (obj instanceof Double && !((Double)obj).isNaN()) {
+                        callback.metricPublished(ConsumerCallback.FETCH_LATENCY_AVG, obj);
+                    }
+                } catch (Exception e) {
+                    log.error("exception fetching 'fetch-latency-avg' metric");
                 }
             }
         });

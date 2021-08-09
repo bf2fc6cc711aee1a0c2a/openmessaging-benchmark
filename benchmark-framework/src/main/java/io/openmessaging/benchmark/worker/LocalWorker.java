@@ -40,6 +40,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.RateLimiter;
 
+import org.HdrHistogram.DoubleRecorder;
 import org.HdrHistogram.Recorder;
 import org.apache.bookkeeper.stats.Counter;
 import org.apache.bookkeeper.stats.NullStatsLogger;
@@ -99,6 +100,8 @@ public class LocalWorker implements Worker, ConsumerCallback {
     private final Recorder endToEndLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(12), 5);
     private final Recorder endToEndCumulativeLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(12), 5);
     private final OpStatsLogger endToEndLatencyStats;
+
+    private DoubleRecorder consumerFetchLatencyRecorder = new DoubleRecorder(3);
 
     private volatile boolean testCompleted = false;
 
@@ -284,6 +287,9 @@ public class LocalWorker implements Worker, ConsumerCallback {
         long now = System.currentTimeMillis();
         stats.elapsedMillis = now - this.lastPeriod;
         this.lastPeriod = now;
+
+        stats.consumerLatency = consumerFetchLatencyRecorder.getIntervalHistogram();
+
         return stats;
     }
 
@@ -350,6 +356,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
         cumulativePublishLatencyRecorder.reset();
         endToEndLatencyRecorder.reset();
         endToEndCumulativeLatencyRecorder.reset();
+        consumerFetchLatencyRecorder.reset();
     }
 
     @Override
@@ -362,6 +369,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
         cumulativePublishLatencyRecorder.reset();
         endToEndLatencyRecorder.reset();
         endToEndCumulativeLatencyRecorder.reset();
+        consumerFetchLatencyRecorder.reset();
 
         messagesSent.reset();
         bytesSent.reset();
@@ -418,5 +426,12 @@ public class LocalWorker implements Worker, ConsumerCallback {
     public void resumeProducers() throws IOException {
         producersArePaused = false;
         log.info("Resuming producers");
+    }
+
+    @Override
+    public void metricPublished(String name, Object value) {
+        if (ConsumerCallback.FETCH_LATENCY_AVG.equals(name)) {
+            consumerFetchLatencyRecorder.recordValue((double)value);
+        }
     }
 }

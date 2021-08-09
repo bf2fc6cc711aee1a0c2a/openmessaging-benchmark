@@ -18,9 +18,10 @@
  */
 package io.openmessaging.benchmark.worker.commands;
 
-import java.util.concurrent.TimeUnit;
-
+import org.HdrHistogram.DoubleHistogram;
 import org.HdrHistogram.Histogram;
+
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
@@ -43,4 +44,8 @@ public class PeriodStats {
     public byte[] endToEndLatencyBytes;
 
     public double elapsedMillis;
+
+    @JsonIgnore
+    public DoubleHistogram consumerLatency = new DoubleHistogram(5);
+    public byte[] consumerLatencyBytes;
 }

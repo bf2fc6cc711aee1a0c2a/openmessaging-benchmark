@@ -35,6 +35,7 @@ import java.util.zip.DataFormatException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 
+import org.HdrHistogram.DoubleHistogram;
 import org.HdrHistogram.Histogram;
 import org.apache.pulsar.common.util.FutureUtil;
 import org.asynchttpclient.AsyncHttpClient;
@@ -249,6 +250,10 @@ public class DistributedWorkersEnsemble implements Worker {
 
                 stats.endToEndLatency.add(Histogram.decodeFromCompressedByteBuffer(
                         ByteBuffer.wrap(is.endToEndLatencyBytes), TimeUnit.HOURS.toMicros(12)));
+
+                stats.consumerLatency.add(DoubleHistogram.decodeFromCompressedByteBuffer(
+                        ByteBuffer.wrap(is.consumerLatencyBytes), 100));
+
             } catch (ArrayIndexOutOfBoundsException | DataFormatException e) {
                 throw new RuntimeException(e);
             }
