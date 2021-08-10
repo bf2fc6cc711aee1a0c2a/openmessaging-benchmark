@@ -21,6 +21,47 @@ lowercaseOutputName: true
 
 rules:
   # Special cases and very specific rules
+  #kafka.producer:type=producer-topic-metrics,client-id="{clientid}",topic="{topic}"", partition="{partition}"
+  #kafka.consumer:type=consumer-fetch-manager-metrics,client-id="{clientid}",topic="{topic}"", partition="{partition}"
+  - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.+), topic=(.+), partition=(.+)><>(.+-total|compression-rate|.+-avg|.+-replica|.+-lag|.+-lead)
+    name: kafka_$2_$6
+    labels:
+      clientId: "$3"
+      topic: "$4"
+      partition: "$5"
+    help: "Kafka $1 JMX metric type $2"
+    type: GAUGE
+
+  #kafka.producer:type=producer-topic-metrics,client-id="{clientid}",topic="{topic}"
+  #kafka.consumer:type=consumer-fetch-manager-metrics,client-id="{clientid}",topic="{topic}"", partition="{partition}"
+  - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.+), topic=(.+)><>(.+-total|compression-rate|.+-avg)
+    name: kafka_$2_$5
+    labels:
+      clientId: "$3"
+      topic: "$4"
+    help: "Kafka $1 JMX metric type $2"
+    type: GAUGE
+
+  #kafka.connect:type=connect-node-metrics,client-id="{clientid}",node-id="{nodeid}"
+  #kafka.consumer:type=consumer-node-metrics,client-id=consumer-1,node-id="{nodeid}"
+  - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.+), node-id=(.+)><>(.+-total|.+-avg)
+    name: kafka_$2_$5
+    labels:
+      clientId: "$3"
+      nodeId: "$4"
+    help: "Kafka $1 JMX metric type $2"
+    type: UNTYPED
+
+  #kafka.connect:type=kafka-metrics-count,client-id="{clientid}"
+  #kafka.consumer:type=consumer-fetch-manager-metrics,client-id="{clientid}"
+  #kafka.consumer:type=consumer-coordinator-metrics,client-id="{clientid}"
+  #kafka.consumer:type=consumer-metrics,client-id="{clientid}"
+  - pattern: kafka.(.+)<type=(.+)-metrics, client-id=(.*)><>(.+-total|.+-avg|.+-bytes|.+-count|.+-ratio|.+-age|.+-flight|.+-threads|.+-connectors|.+-tasks|.+-ago)
+    name: kafka_$2_$4
+    labels:
+      clientId: "$3"
+    help: "Kafka $1 JMX metric type $2"
+    type: GAUGE
   - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
     name: kafka_server_$1_$2
     type: GAUGE

@@ -18,9 +18,9 @@
  */
 package io.openmessaging.benchmark.worker.commands;
 
-import java.util.concurrent.TimeUnit;
-
 import org.HdrHistogram.Histogram;
+
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 

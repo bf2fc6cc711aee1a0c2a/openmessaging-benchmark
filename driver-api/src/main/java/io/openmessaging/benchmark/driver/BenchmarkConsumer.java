@@ -18,6 +18,12 @@
  */
 package io.openmessaging.benchmark.driver;
 
-public interface BenchmarkConsumer extends AutoCloseable {
+import java.util.Collections;
+import java.util.Map;
 
+public interface BenchmarkConsumer extends AutoCloseable {
+    public static final String FETCH_LATENCY_AVG = "fetch-latency-avg";
+    default Map<String, Object> supplyStats() {
+        return Collections.emptyMap();
+    }
 }

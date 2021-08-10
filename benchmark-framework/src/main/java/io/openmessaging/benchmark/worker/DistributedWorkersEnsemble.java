@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.DoubleAdder;
 import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
@@ -249,6 +250,7 @@ public class DistributedWorkersEnsemble implements Worker {
 
                 stats.endToEndLatency.add(Histogram.decodeFromCompressedByteBuffer(
                         ByteBuffer.wrap(is.endToEndLatencyBytes), TimeUnit.HOURS.toMicros(12)));
+
             } catch (ArrayIndexOutOfBoundsException | DataFormatException e) {
                 throw new RuntimeException(e);
             }
@@ -291,12 +293,17 @@ public class DistributedWorkersEnsemble implements Worker {
         List<CountersStats> individualStats = get(workers, "/counters-stats", CountersStats.class);
 
         CountersStats stats = new CountersStats();
+        DoubleAdder latency = new DoubleAdder();
         individualStats.forEach(is -> {
             stats.messagesSent += is.messagesSent;
             stats.messagesReceived += is.messagesReceived;
             stats.elapsedMillis += is.elapsedMillis;
+            if (!is.fetchLatencyAvg.isNaN()) {
+                latency.add(is.fetchLatencyAvg);
+            }
         });
         stats.elapsedMillis /= workers.size();
+        stats.fetchLatencyAvg = latency.doubleValue()/consumerWorkers.size();
         return stats;
     }
 

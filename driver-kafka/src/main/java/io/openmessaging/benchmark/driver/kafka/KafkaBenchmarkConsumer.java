@@ -18,9 +18,11 @@
  */
 package io.openmessaging.benchmark.driver.kafka;
 
+import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -37,6 +39,9 @@ import io.openmessaging.benchmark.driver.ConsumerCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
 public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkConsumer.class);
@@ -46,10 +51,13 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
     private final ExecutorService executor;
     private final Future<?> consumerTask;
     private volatile boolean closing = false;
+    private String clientId;
+    private MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
-    public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer, ConsumerCallback callback) {
+    public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer, ConsumerCallback callback, String clientId) {
         this.consumer = consumer;
         this.executor = Executors.newSingleThreadExecutor();
+        this.clientId = clientId;
 
         this.consumerTask = this.executor.submit(() -> {
             while (!closing) {
@@ -71,6 +79,22 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
                 }
             }
         });
+    }
+
+    @Override
+    public Map<String, Object> supplyStats() {
+        Map<String, Object> stats = new TreeMap<>();
+        try {
+            ObjectName fetchManagerName = new ObjectName("kafka.consumer:type=consumer-fetch-manager-metrics,client-id="+this.clientId);
+            Object obj = mbeanServer.getAttribute(fetchManagerName, BenchmarkConsumer.FETCH_LATENCY_AVG);
+            if (obj instanceof Double && !((Double)obj).isNaN()) {
+                log.info("At Driver - " + BenchmarkConsumer.FETCH_LATENCY_AVG + "=" + obj);
+                stats.put(BenchmarkConsumer.FETCH_LATENCY_AVG, obj);
+            }
+        } catch (Exception e) {
+            log.error("exception fetching 'fetch-latency-avg' metric");
+        }
+        return stats;
     }
 
     @Override

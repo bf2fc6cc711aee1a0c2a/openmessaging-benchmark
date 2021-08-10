@@ -97,7 +97,7 @@ public class WorkerHandler {
     }
 
     private void handleCreateProducers(Context ctx) throws Exception {
-        List<String> topics = (List<String>) mapper.readValue(ctx.body(), List.class);
+        List<String> topics = mapper.readValue(ctx.body(), List.class);
         log.info("Received create producers request for topics: {}", topics);
         localWorker.createProducers(topics);
     }

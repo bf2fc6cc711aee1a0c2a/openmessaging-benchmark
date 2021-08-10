@@ -26,11 +26,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -284,6 +286,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
         long now = System.currentTimeMillis();
         stats.elapsedMillis = now - this.lastPeriod;
         this.lastPeriod = now;
+
         return stats;
     }
 
@@ -301,6 +304,17 @@ public class LocalWorker implements Worker, ConsumerCallback {
         stats.messagesSent = totalMessagesSent.sum();
         stats.messagesReceived = totalMessagesReceived.sum();
         stats.elapsedMillis = System.currentTimeMillis() - startCounter;
+
+        DoubleAdder latencyAvg = new DoubleAdder();
+        for (BenchmarkConsumer bc : this.consumers) {
+            Map<String, Object> consumerStats = bc.supplyStats();
+            for (Map.Entry<String, Object> entry : consumerStats.entrySet()) {
+                if (entry.getKey().equals(BenchmarkConsumer.FETCH_LATENCY_AVG)) {
+                    latencyAvg.add((double)entry.getValue());
+                }
+            }
+        }
+        stats.fetchLatencyAvg = latencyAvg.doubleValue()/this.consumers.size();
         return stats;
     }
 

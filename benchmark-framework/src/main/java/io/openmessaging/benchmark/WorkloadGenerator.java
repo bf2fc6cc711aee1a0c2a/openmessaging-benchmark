@@ -415,6 +415,7 @@ public class WorkloadGenerator implements AutoCloseable {
             }
 
             PeriodStats stats = worker.getPeriodStats();
+            CountersStats counterStats = worker.getCountersStats();
 
             long now = System.nanoTime();
             double elapsed = stats.elapsedMillis / 1000d;
@@ -429,9 +430,10 @@ public class WorkloadGenerator implements AutoCloseable {
                     - stats.totalMessagesReceived;
 
             log.info(
-                    "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
+                    "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s |Consumer Latency (ms) avg: {} | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
                     rateFormat.format(publishRate), throughputFormat.format(publishThroughput),
                     rateFormat.format(consumeRate), throughputFormat.format(consumeThroughput),
+                    dec.format(counterStats.fetchLatencyAvg),
                     dec.format(currentBacklog / 1000.0), //
                     dec.format(microsToMillis(stats.publishLatency.getMean())),
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(50))),

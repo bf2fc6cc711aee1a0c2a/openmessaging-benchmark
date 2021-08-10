@@ -25,6 +25,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -61,6 +62,7 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
     private Properties consumerProperties;
 
     private AdminClient admin;
+    private static final AtomicInteger CONSUMER_CLIENT_ID_SEQUENCE = new AtomicInteger(1);
 
     @Override
     public void initialize(File configurationFile, StatsLogger statsLogger) throws IOException {
@@ -145,16 +147,20 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
     @Override
     public CompletableFuture<BenchmarkConsumer> createConsumer(String topic, String subscriptionName,
             Optional<Integer> partition, ConsumerCallback consumerCallback) {
+
+        String clientId = "consumer-"+subscriptionName+CONSUMER_CLIENT_ID_SEQUENCE.getAndIncrement();
         Properties properties = new Properties();
         consumerProperties.forEach((key, value) -> properties.put(key, value));
         properties.put(ConsumerConfig.GROUP_ID_CONFIG, subscriptionName);
+        properties.put(ConsumerConfig.CLIENT_ID_CONFIG, clientId);
+
         KafkaConsumer<String, byte[]> kafkaConsumer = new KafkaConsumer<>(properties);
         try {
             // Subscribe
             kafkaConsumer.subscribe(Arrays.asList(topic));
 
             // Start polling
-            BenchmarkConsumer benchmarkConsumer = new KafkaBenchmarkConsumer(kafkaConsumer, consumerCallback);
+            BenchmarkConsumer benchmarkConsumer = new KafkaBenchmarkConsumer(kafkaConsumer, consumerCallback, clientId);
 
             // Add to consumer list to close later
             consumers.add(benchmarkConsumer);

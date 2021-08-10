@@ -24,7 +24,7 @@ package io.openmessaging.benchmark.driver;
 public interface ConsumerCallback {
     /**
      * Driver should invoke this method once for each message received
-     * 
+     *
      * @param payload
      *            the received message payload
      * @param publishTimestamp
