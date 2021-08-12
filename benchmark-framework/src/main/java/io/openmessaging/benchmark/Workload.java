@@ -44,6 +44,7 @@ public class Workload {
     public int producerRate;
 
     public boolean findSustainableRate;
+    public Double sustainableRateMaxBacklogMs;
 
     /**
      * If the consumer backlog is > 0, the generator will accumulate messages until

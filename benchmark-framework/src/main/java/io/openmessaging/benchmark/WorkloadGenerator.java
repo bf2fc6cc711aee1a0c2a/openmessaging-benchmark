@@ -54,8 +54,6 @@ public class WorkloadGenerator implements AutoCloseable {
     private final Workload workload;
     private final Worker worker;
 
-    public static final int CATCHUP_MS_TOLERANCE = 25;
-
     private final ExecutorService executor = Executors
             .newCachedThreadPool(new DefaultThreadFactory("messaging-benchmark"));
 
@@ -112,6 +110,7 @@ public class WorkloadGenerator implements AutoCloseable {
         if (workload.warmupDurationMinutes > 0) {
             log.info("----- Starting warm-up traffic ------");
             printAndCollectStats(workload.warmupDurationMinutes, TimeUnit.MINUTES);
+            // if the backlog is decreasing, we should extend the warmup
         }
 
         if (workload.consumerBacklogSizeGB > 0) {
@@ -174,9 +173,13 @@ public class WorkloadGenerator implements AutoCloseable {
     /**
      * Adjust the publish rate to a level that is sustainable, meaning that we can
      * consume all the messages that are being produced
+     *
+     * The presumptive max should be at least twice the value of the current rate passed in
      */
     double findMaximumSustainableRate(double currentRate) throws IOException, InterruptedException {
         double maxRate = 0; // Discovered max sustainable rate
+
+        final double maxBacklogSeconds = (workload.sustainableRateMaxBacklogMs == null ? 200 : workload.sustainableRateMaxBacklogMs)  / 1000d;
 
         CountersStats stats = worker.getCountersStats();
 
@@ -188,7 +191,9 @@ public class WorkloadGenerator implements AutoCloseable {
 
         int successfulPeriods = 0;
         boolean warming = true;
+        boolean stuck = false;
         double windowStartTotalMessagesSentCounter = 0;
+        double windowStartTotalMessagesReceivedCounter = 0;
         double windowStartTimestamp = 0;
 
         while (!runCompleted) {
@@ -230,22 +235,24 @@ public class WorkloadGenerator implements AutoCloseable {
 
             boolean success = true;
             // If the consumers are building backlog, we should slow down publish rate
-            if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98) {
+            if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98
+                    || (successfulPeriods > 0 && (localTotalMessagesReceivedCounter - windowStartTotalMessagesReceivedCounter) <
+                            (localTotalMessagesSentCounter - windowStartTotalMessagesSentCounter) * .97)) {
                 currentRate = (maxRate + currentRate) / 2;
                 log.info("Consumers are not meeting requested rate. reducing to {}", dec.format(currentRate));
                 worker.adjustPublishRate(currentRate);
                 success = false;
             }
 
-            // prevents there from ever being more than ~25 ms of catch-up
-            if (workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived > publishRateInLastPeriod / (1000 / CATCHUP_MS_TOLERANCE)) {
+            // prevents there from being too much of a catch up
+            if (workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived > publishRateInLastPeriod * maxBacklogSeconds) {
                 // Slows the publishes to let the consumer time to absorb the backlog
                 worker.adjustPublishRate(maxRate / 10);
                 log.info("Working down the backlog");
                 while (!runCompleted) {
                     stats = worker.getCountersStats();
                     long backlog = workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived;
-                    if (backlog < publishRateInLastPeriod / (10000 / CATCHUP_MS_TOLERANCE)) {
+                    if (backlog < publishRateInLastPeriod * maxBacklogSeconds / 10) {
                         break;
                     }
 
@@ -253,8 +260,10 @@ public class WorkloadGenerator implements AutoCloseable {
                 }
 
                 if (success) {
-                    currentRate = (maxRate + 2*currentRate) / 3;
-                    log.info("Resuming load at a slightly reduced rate {}", dec.format(currentRate));
+                    if (successfulPeriods == 0) {
+                        currentRate = (maxRate + 2*currentRate) / 3;
+                        log.info("Resuming load at a slightly reduced rate {}", dec.format(currentRate));
+                    }
                     success = false;
                 }
                 warming = true;
@@ -263,32 +272,46 @@ public class WorkloadGenerator implements AutoCloseable {
             if (!success) {
                 successfulPeriods = 0;
                 if (maxRate/currentRate > .99) {
-                    log.info("Not making progress, exiting");
-                    runCompleted = true;
-                    break;
+                    if (stuck) {
+                        log.info("Not making progress, exiting");
+                        runCompleted = true;
+                        break;
+                    }
+                    stuck = true;
+                    currentRate *= 1.1; // last chance
+                    log.info("Adjusting rate for a final check of {}", dec.format(currentRate));
                 }
             } else {
                 if (successfulPeriods == 0) {
+                    windowStartTotalMessagesReceivedCounter = localTotalMessagesReceivedCounter;
                     windowStartTotalMessagesSentCounter = localTotalMessagesSentCounter;
                     windowStartTimestamp = lastControlTimestamp;
                 }
                 if (++successfulPeriods > 2) {
                     successfulPeriods = 0;
-                    double multiplier = 1.1;
+                    double multiplier = 1.15;
                     double windowRate = (localTotalMessagesSentCounter - windowStartTotalMessagesSentCounter) * 1000d
                             / (lastControlTimestamp - windowStartTimestamp);
 
+                    // step by a similar ratio - this logic doesn't like bursting
+                    if (maxRate == 0) {
+                        multiplier = 2;
+                    } else if (windowRate > maxRate) {
+                        multiplier = Math.max(multiplier, windowRate/maxRate);
+                    }
+
                     if (windowRate > maxRate) {
-                        // step by a similar ratio - this logic doesn't like bursting
-                        if (maxRate == 0) {
-                            multiplier = 2;
-                        } else {
-                            multiplier = Math.max(multiplier, windowRate/maxRate);
-                        }
                         maxRate = windowRate;
+                        stuck = false;
                         log.info("At max {}", dec.format(maxRate));
+                    } else if (windowRate < .9*currentRate) {
+                        throw new IllegalStateException(String.format(
+                                "The effective rate %s is lower than expected %s.  "
+                                + "The producers are not generating the expected load or something is wrong.",
+                                dec.format(windowRate), dec.format(currentRate)));
                     }
                     currentRate = maxRate * multiplier;
+                    log.info("Adjusting rate to {}", dec.format(currentRate));
                 }
             }
 
