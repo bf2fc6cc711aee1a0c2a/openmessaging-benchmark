@@ -32,6 +32,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -81,21 +82,46 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
     private final StatsLogger statsLogger;
 
-    private final LongAdder messagesSent = new LongAdder();
-    private final LongAdder bytesSent = new LongAdder();
-    private final Counter messagesSentCounter;
-    private final Counter bytesSentCounter;
+    static class StatCounter {
+        private final LongAdder total = new LongAdder();
+        private volatile long last;
+        private final Counter counter;
 
-    private final LongAdder messagesReceived = new LongAdder();
-    private final LongAdder bytesReceived = new LongAdder();
-    private final Counter messagesReceivedCounter;
-    private final Counter bytesReceivedCounter;
+        public StatCounter(Counter counter) {
+            this.counter = counter;
+        }
 
-    private final LongAdder totalMessagesSent = new LongAdder();
-    private final LongAdder totalMessagesReceived = new LongAdder();
+        public void accumulate(long value) {
+            total.add(value);
+            counter.add(value);
+        }
 
-    private final Recorder publishLatencyRecorder = new Recorder(TimeUnit.SECONDS.toMicros(60), 5);
-    private final Recorder cumulativePublishLatencyRecorder = new Recorder(TimeUnit.SECONDS.toMicros(60), 5);
+        public void reset() {
+            total.reset();
+            last = 0;
+            counter.clear();
+        }
+
+        public long sinceLast() {
+            long old = last;
+            last = total.sum();
+            return last - old;
+        }
+
+        public long getTotal() {
+            return total.sum();
+        }
+    }
+
+    private final StatCounter bytesSentCounter;
+    private final StatCounter bytesReceivedCounter;
+    private final StatCounter messagesSentCounter;
+    private final StatCounter messagesReceivedCounter;
+    private final StatCounter publishErrorCounter;
+    private final StatCounter consumeErrorCounter;
+
+    private final Recorder publishLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(1), 5);
+    private final Recorder cumulativePublishLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(1), 5);
     private final OpStatsLogger publishLatencyStats;
 
     private final Recorder endToEndLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(12), 5);
@@ -120,13 +146,15 @@ public class LocalWorker implements Worker, ConsumerCallback {
         this.statsLogger = statsLogger;
 
         StatsLogger producerStatsLogger = statsLogger.scope("producer");
-        this.messagesSentCounter = producerStatsLogger.getCounter("messages_sent");
-        this.bytesSentCounter = producerStatsLogger.getCounter("bytes_sent");
+        this.messagesSentCounter = new StatCounter(producerStatsLogger.getCounter("messages_sent"));
+        this.bytesSentCounter = new StatCounter(producerStatsLogger.getCounter("bytes_sent"));
+        this.publishErrorCounter = new StatCounter(producerStatsLogger.getCounter("produce_errors"));
         this.publishLatencyStats = producerStatsLogger.getOpStatsLogger("produce_latency");
 
         StatsLogger consumerStatsLogger = statsLogger.scope("consumer");
-        this.messagesReceivedCounter = consumerStatsLogger.getCounter("messages_recv");
-        this.bytesReceivedCounter = consumerStatsLogger.getCounter("bytes_recv");
+        this.messagesReceivedCounter = new StatCounter(consumerStatsLogger.getCounter("messages_recv"));
+        this.bytesReceivedCounter = new StatCounter(consumerStatsLogger.getCounter("bytes_recv"));
+        this.consumeErrorCounter = new StatCounter(producerStatsLogger.getCounter("consume_errors"));
         this.endToEndLatencyStats = consumerStatsLogger.getOpStatsLogger("e2e_latency");
     }
 
@@ -216,8 +244,11 @@ public class LocalWorker implements Worker, ConsumerCallback {
     @Override
     public void probeProducers() throws IOException {
         producers.forEach(producer -> producer.sendAsync(Optional.of("key"), new byte[10])
-                .thenRun(() -> totalMessagesSent.increment()));
+                .thenRun(() -> messagesSentCounter.accumulate(1)));
     }
+
+    AtomicLong totalAsyncTime = new AtomicLong();
+    AtomicLong sent = new AtomicLong();
 
     private void submitProducersToExecutor(List<BenchmarkProducer> producers, KeyDistributor keyDistributor,
             byte[] payloadData) {
@@ -235,21 +266,26 @@ public class LocalWorker implements Worker, ConsumerCallback {
                     producers.forEach(producer -> {
                         rateLimiter.acquire();
                         final long sendTime = System.nanoTime();
-                        producer.sendAsync(Optional.ofNullable(keyDistributor.next()), payloadData).thenRun(() -> {
-                            messagesSent.increment();
-                            totalMessagesSent.increment();
-                            messagesSentCounter.inc();
-                            bytesSent.add(payloadData.length);
-                            bytesSentCounter.add(payloadData.length);
-
-                            long microTime = TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - sendTime);
-                            publishLatencyRecorder.recordValue(microTime);
-                            cumulativePublishLatencyRecorder.recordValue(microTime);
-                            publishLatencyStats.registerSuccessfulEvent(microTime, TimeUnit.MICROSECONDS);
-                        }).exceptionally(ex -> {
-                            log.warn("Write error on message", ex);
-                            return null;
-                        });
+                        try {
+                            producer.sendAsync(Optional.ofNullable(keyDistributor.next()), payloadData).handle((v, t) -> {
+                                long microTime = TimeUnit.NANOSECONDS.toMicros(System.nanoTime() - sendTime);
+                                if (t != null) {
+                                    log.warn("Write error on message", t);
+                                    publishLatencyStats.registerFailedEvent(microTime, TimeUnit.MICROSECONDS);
+                                    publishErrorCounter.accumulate(1);
+                                } else {
+                                    messagesSentCounter.accumulate(1);
+                                    bytesSentCounter.accumulate(payloadData.length);
+                                    publishLatencyStats.registerSuccessfulEvent(microTime, TimeUnit.MICROSECONDS);
+                                    publishLatencyRecorder.recordValue(microTime);
+                                    cumulativePublishLatencyRecorder.recordValue(microTime);
+                                }
+                                return null;
+                            });
+                        } catch (Exception e) {
+                            log.warn("Write error on message", e);
+                            publishErrorCounter.accumulate(1);
+                        }
                     });
                 }
             } catch (Throwable t) {
@@ -271,14 +307,14 @@ public class LocalWorker implements Worker, ConsumerCallback {
     public PeriodStats getPeriodStats() {
         PeriodStats stats = new PeriodStats();
 
-        stats.messagesSent = messagesSent.sumThenReset();
-        stats.bytesSent = bytesSent.sumThenReset();
+        stats.messagesSent = messagesSentCounter.sinceLast();
+        stats.bytesSent = bytesSentCounter.sinceLast();
 
-        stats.messagesReceived = messagesReceived.sumThenReset();
-        stats.bytesReceived = bytesReceived.sumThenReset();
+        stats.messagesReceived = messagesReceivedCounter.sinceLast();
+        stats.bytesReceived = bytesReceivedCounter.sinceLast();
 
-        stats.totalMessagesSent = totalMessagesSent.sum();
-        stats.totalMessagesReceived = totalMessagesReceived.sum();
+        stats.totalMessagesSent = messagesSentCounter.getTotal();
+        stats.totalMessagesReceived = messagesSentCounter.getTotal();
 
         stats.publishLatency = publishLatencyRecorder.getIntervalHistogram();
         stats.endToEndLatency = endToEndLatencyRecorder.getIntervalHistogram();
@@ -301,8 +337,11 @@ public class LocalWorker implements Worker, ConsumerCallback {
     @Override
     public CountersStats getCountersStats() throws IOException {
         CountersStats stats = new CountersStats();
-        stats.messagesSent = totalMessagesSent.sum();
-        stats.messagesReceived = totalMessagesReceived.sum();
+        stats.messagesSent = messagesSentCounter.getTotal();
+        stats.messagesReceived = messagesReceivedCounter.getTotal();
+        stats.publishErrors = publishErrorCounter.getTotal();
+        stats.consumerErrors = consumeErrorCounter.getTotal();
+
         stats.elapsedMillis = System.currentTimeMillis() - startCounter;
 
         DoubleAdder latencyAvg = new DoubleAdder();
@@ -320,11 +359,8 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
     @Override
     public void messageReceived(byte[] data, long publishTimestamp) {
-        messagesReceived.increment();
-        totalMessagesReceived.increment();
-        messagesReceivedCounter.inc();
-        bytesReceived.add(data.length);
-        bytesReceivedCounter.add(data.length);
+        messagesReceivedCounter.accumulate(1);
+        bytesReceivedCounter.accumulate(data.length);
 
         // NOTE: PublishTimestamp is expected to be using the wall-clock time across
         // machines
@@ -344,6 +380,11 @@ public class LocalWorker implements Worker, ConsumerCallback {
                 e.printStackTrace();
             }
         }
+    }
+
+    @Override
+    public void exception(Exception e) {
+        consumeErrorCounter.accumulate(1);
     }
 
     @Override
@@ -377,12 +418,10 @@ public class LocalWorker implements Worker, ConsumerCallback {
         endToEndLatencyRecorder.reset();
         endToEndCumulativeLatencyRecorder.reset();
 
-        messagesSent.reset();
-        bytesSent.reset();
-        messagesReceived.reset();
-        bytesReceived.reset();
-        totalMessagesSent.reset();
-        totalMessagesReceived.reset();
+        messagesSentCounter.reset();
+        bytesSentCounter.reset();
+        messagesReceivedCounter.reset();
+        bytesReceivedCounter.reset();
 
         try {
             Thread.sleep(100);

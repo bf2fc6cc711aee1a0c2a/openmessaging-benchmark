@@ -471,6 +471,10 @@ public class WorkloadGenerator implements AutoCloseable {
                     dec.format(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.9))),
                     throughputFormat.format(microsToMillis(stats.endToEndLatency.getMaxValue())));
 
+            if (counterStats.publishErrors > 0 || counterStats.consumerErrors > 0) {
+                log.warn("Publish errors {} | Consumer Errors {}", counterStats.publishErrors, counterStats.consumerErrors);
+            }
+
             result.publishRate.add(publishRate);
             result.consumeRate.add(consumeRate);
             result.backlog.add(currentBacklog);

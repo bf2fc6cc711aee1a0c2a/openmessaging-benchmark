@@ -69,6 +69,7 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
                         consumer.commitAsync();
                     }
                 } catch (Exception e) {
+                    callback.exception(e);
                     log.error("exception occur while consuming message", e);
                 }
             }

@@ -301,6 +301,8 @@ public class DistributedWorkersEnsemble implements Worker {
             if (!is.fetchLatencyAvg.isNaN()) {
                 latency.add(is.fetchLatencyAvg);
             }
+            stats.consumerErrors += is.consumerErrors;
+            stats.publishErrors += is.publishErrors;
         });
         stats.elapsedMillis /= workers.size();
         stats.fetchLatencyAvg = latency.doubleValue()/consumerWorkers.size();
