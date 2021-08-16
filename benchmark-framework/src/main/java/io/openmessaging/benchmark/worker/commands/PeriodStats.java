@@ -31,6 +31,9 @@ public class PeriodStats {
     public long messagesReceived = 0;
     public long bytesReceived = 0;
 
+    public long publishErrors;
+    public long consumerErrors;
+
     public long totalMessagesSent = 0;
     public long totalMessagesReceived = 0;
 

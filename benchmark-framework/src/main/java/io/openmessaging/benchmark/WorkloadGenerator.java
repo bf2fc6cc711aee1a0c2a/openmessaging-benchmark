@@ -233,6 +233,10 @@ public class WorkloadGenerator implements AutoCloseable {
                 continue;
             }
 
+            if (stats.publishErrors > 0 || stats.consumerErrors > 0) {
+                throw new IllegalStateException("Experienced errors, won't determine sustainable rate");
+            }
+
             boolean success = true;
             // If the consumers are building backlog, we should slow down publish rate
             if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98
@@ -267,6 +271,11 @@ public class WorkloadGenerator implements AutoCloseable {
                     success = false;
                 }
                 warming = true;
+            } else if (publishRateInLastPeriod < .97 * currentRate) {
+                currentRate = Math.max(maxRate, (maxRate + publishRateInLastPeriod) / 2);
+                log.info("Producers are not meeting requested rate. reducing to {}", dec.format(currentRate));
+                worker.adjustPublishRate(currentRate);
+                success = false;
             }
 
             if (!success) {
@@ -309,6 +318,12 @@ public class WorkloadGenerator implements AutoCloseable {
                                 "The effective rate %s is lower than expected %s.  "
                                 + "The producers are not generating the expected load or something is wrong.",
                                 dec.format(windowRate), dec.format(currentRate)));
+                    } else if (stuck) {
+                        log.info("Not making progress, exiting");
+                        runCompleted = true;
+                        break;
+                    } else {
+                        stuck = true;
                     }
                     currentRate = maxRate * multiplier;
                     log.info("Adjusting rate to {}", dec.format(currentRate));
@@ -471,8 +486,8 @@ public class WorkloadGenerator implements AutoCloseable {
                     dec.format(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.9))),
                     throughputFormat.format(microsToMillis(stats.endToEndLatency.getMaxValue())));
 
-            if (counterStats.publishErrors > 0 || counterStats.consumerErrors > 0) {
-                log.warn("Publish errors {} | Consumer Errors {}", counterStats.publishErrors, counterStats.consumerErrors);
+            if (stats.publishErrors > 0 || stats.consumerErrors > 0) {
+                log.warn("Publish errors {} | Consumer Errors {}", stats.publishErrors, stats.consumerErrors);
             }
 
             result.publishRate.add(publishRate);
@@ -553,6 +568,9 @@ public class WorkloadGenerator implements AutoCloseable {
                     result.aggregatedEndToEndLatencyQuantiles.put(value.getPercentile(),
                             microsToMillis(value.getValueIteratedTo()));
                 });
+
+                result.aggregatedPublishErrors = counterStats.publishErrors;
+                result.aggregatedConsumerErrors = counterStats.consumerErrors;
 
                 break;
             }

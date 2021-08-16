@@ -243,6 +243,8 @@ public class DistributedWorkersEnsemble implements Worker {
             stats.totalMessagesSent += is.totalMessagesSent;
             stats.totalMessagesReceived += is.totalMessagesReceived;
             stats.elapsedMillis += is.elapsedMillis;
+            stats.consumerErrors += is.consumerErrors;
+            stats.publishErrors += is.publishErrors;
 
             try {
                 stats.publishLatency.add(Histogram.decodeFromCompressedByteBuffer(

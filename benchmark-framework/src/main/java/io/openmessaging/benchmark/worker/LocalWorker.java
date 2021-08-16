@@ -313,6 +313,9 @@ public class LocalWorker implements Worker, ConsumerCallback {
         stats.messagesReceived = messagesReceivedCounter.sinceLast();
         stats.bytesReceived = bytesReceivedCounter.sinceLast();
 
+        stats.publishErrors = publishErrorCounter.sinceLast();
+        stats.consumerErrors = consumeErrorCounter.sinceLast();
+
         stats.totalMessagesSent = messagesSentCounter.getTotal();
         stats.totalMessagesReceived = messagesSentCounter.getTotal();
 
