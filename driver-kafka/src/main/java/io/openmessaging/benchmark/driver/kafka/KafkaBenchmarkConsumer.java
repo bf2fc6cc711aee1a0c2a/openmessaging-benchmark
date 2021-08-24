@@ -33,13 +33,15 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 
 import io.openmessaging.benchmark.driver.BenchmarkConsumer;
 import io.openmessaging.benchmark.driver.ConsumerCallback;
+import io.openmessaging.benchmark.driver.MetricsEnabled;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
-public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
+public class KafkaBenchmarkConsumer implements BenchmarkConsumer, MetricsEnabled {
 
     private static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkConsumer.class);
 
@@ -81,10 +83,9 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
         Map<String, Object> stats = new TreeMap<>();
         try {
             ObjectName fetchManagerName = new ObjectName("kafka.consumer:type=consumer-fetch-manager-metrics,client-id="+this.clientId);
-            Object obj = mbeanServer.getAttribute(fetchManagerName, BenchmarkConsumer.FETCH_LATENCY_AVG);
+            Object obj = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.FETCH_LATENCY_AVG);
             if (obj instanceof Double && !((Double)obj).isNaN()) {
-                log.info("At Driver - " + BenchmarkConsumer.FETCH_LATENCY_AVG + "=" + obj);
-                stats.put(BenchmarkConsumer.FETCH_LATENCY_AVG, obj);
+                stats.put(MetricsEnabled.FETCH_LATENCY_AVG, obj);
             }
         } catch (Exception e) {
             log.error("exception fetching 'fetch-latency-avg' metric");

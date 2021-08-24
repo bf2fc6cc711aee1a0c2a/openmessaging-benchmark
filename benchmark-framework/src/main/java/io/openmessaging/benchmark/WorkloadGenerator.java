@@ -44,6 +44,7 @@ import io.openmessaging.benchmark.worker.commands.CountersStats;
 import io.openmessaging.benchmark.worker.commands.CumulativeLatencies;
 import io.openmessaging.benchmark.worker.commands.PeriodStats;
 import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
+import io.openmessaging.benchmark.worker.commands.Stats;
 import io.openmessaging.benchmark.worker.commands.TopicSubscription;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
 
@@ -202,6 +203,7 @@ public class WorkloadGenerator implements AutoCloseable {
 
             // Consider multiple copies when using multiple subscriptions
             stats = worker.getCountersStats();
+            Stats onDemandStats = worker.getOnDemandStats();
             double currentTime = stats.elapsedMillis;
             long totalMessagesSent = stats.messagesSent;
             long totalMessagesReceived = stats.messagesReceived;
@@ -257,6 +259,7 @@ public class WorkloadGenerator implements AutoCloseable {
                     stats = worker.getCountersStats();
                     long backlog = workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived;
                     if (backlog < publishRateInLastPeriod * maxBacklogSeconds / 10) {
+                        log.info("caught up with backlog less 10% remaining");
                         break;
                     }
 
@@ -276,6 +279,8 @@ public class WorkloadGenerator implements AutoCloseable {
                 log.info("Producers are not meeting requested rate. reducing to {}", dec.format(currentRate));
                 worker.adjustPublishRate(currentRate);
                 success = false;
+            } else if (microsToMillis(onDemandStats.publishLatency.getMean()) > 10d) {
+
             }
 
             if (!success) {
@@ -464,11 +469,11 @@ public class WorkloadGenerator implements AutoCloseable {
             double consumeRate = stats.messagesReceived / elapsed;
             double consumeThroughput = stats.bytesReceived / elapsed / 1024 / 1024;
 
-            long currentBacklog = workload.subscriptionsPerTopic * stats.totalMessagesSent
-                    - stats.totalMessagesReceived;
+            long currentBacklog = (workload.subscriptionsPerTopic * stats.totalMessagesSent - stats.totalMessagesReceived);
+            log.info("");
 
             log.info(
-                    "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s |Consumer Latency (ms) avg: {} | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
+                    "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s | Consumer Latency (ms) avg: {} | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
                     rateFormat.format(publishRate), throughputFormat.format(publishThroughput),
                     rateFormat.format(consumeRate), throughputFormat.format(consumeThroughput),
                     dec.format(counterStats.fetchLatencyAvg),
@@ -478,6 +483,10 @@ public class WorkloadGenerator implements AutoCloseable {
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(99))),
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(99.9))),
                     throughputFormat.format(microsToMillis(stats.publishLatency.getMaxValue())));
+
+            log.info("Avg Producer Throttle Time (ms) {} | Avg Producer Record Queue Time (ms) {}",
+                    counterStats.produceThrottleTimeAvg,
+                    counterStats.recordQueueTimeAvg);
 
             log.info("E2E Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
                     dec.format(microsToMillis(stats.endToEndLatency.getMean())),

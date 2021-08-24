@@ -39,6 +39,7 @@ import io.openmessaging.benchmark.worker.commands.ConsumerAssignment;
 import io.openmessaging.benchmark.worker.commands.CumulativeLatencies;
 import io.openmessaging.benchmark.worker.commands.PeriodStats;
 import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
+import io.openmessaging.benchmark.worker.commands.Stats;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
 
 @SuppressWarnings("unchecked")
@@ -66,6 +67,7 @@ public class WorkerHandler {
         app.get("/cumulative-latencies", this::handleCumulativeLatencies);
         app.get("/counters-stats", this::handleCountersStats);
         app.post("/reset-stats", this::handleResetStats);
+        app.post("/ondemand-stats", this::handleOnDemandStats);
 
         app.exception(Exception.class, (e, ctx) -> {
             log.error("Request handler: {} - Exception: {}", ctx.path(), e.getMessage(), e);
@@ -165,6 +167,21 @@ public class WorkerHandler {
             stats.endToEndLatencyBytes = new byte[histogramSerializationBuffer.position()];
             histogramSerializationBuffer.flip();
             histogramSerializationBuffer.get(stats.endToEndLatencyBytes);
+        }
+
+        ctx.result(writer.writeValueAsString(stats));
+    }
+
+    private void handleOnDemandStats(Context ctx) throws Exception {
+        Stats stats = localWorker.getOnDemandStats();
+
+        // Serialize histograms
+        synchronized (histogramSerializationBuffer) {
+            histogramSerializationBuffer.clear();
+            stats.publishLatency.encodeIntoCompressedByteBuffer(histogramSerializationBuffer);
+            stats.publishLatencyBytes = new byte[histogramSerializationBuffer.position()];
+            histogramSerializationBuffer.flip();
+            histogramSerializationBuffer.get(stats.publishLatencyBytes);
         }
 
         ctx.result(writer.writeValueAsString(stats));

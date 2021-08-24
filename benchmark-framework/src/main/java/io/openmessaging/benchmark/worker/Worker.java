@@ -27,6 +27,7 @@ import io.openmessaging.benchmark.worker.commands.CountersStats;
 import io.openmessaging.benchmark.worker.commands.CumulativeLatencies;
 import io.openmessaging.benchmark.worker.commands.PeriodStats;
 import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
+import io.openmessaging.benchmark.worker.commands.Stats;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
 
 public interface Worker extends AutoCloseable {
@@ -65,4 +66,6 @@ public interface Worker extends AutoCloseable {
     void resetStats() throws IOException;
 
     void stopAll() throws IOException;
+
+    Stats getOnDemandStats();
 }

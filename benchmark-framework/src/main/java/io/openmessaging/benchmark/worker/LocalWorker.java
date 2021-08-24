@@ -35,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,6 +58,7 @@ import io.openmessaging.benchmark.driver.BenchmarkConsumer;
 import io.openmessaging.benchmark.driver.BenchmarkDriver;
 import io.openmessaging.benchmark.driver.BenchmarkProducer;
 import io.openmessaging.benchmark.driver.ConsumerCallback;
+import io.openmessaging.benchmark.driver.MetricsEnabled;
 import io.openmessaging.benchmark.utils.RandomGenerator;
 import io.openmessaging.benchmark.utils.Timer;
 import io.openmessaging.benchmark.utils.distributor.KeyDistributor;
@@ -65,6 +67,7 @@ import io.openmessaging.benchmark.worker.commands.CountersStats;
 import io.openmessaging.benchmark.worker.commands.CumulativeLatencies;
 import io.openmessaging.benchmark.worker.commands.PeriodStats;
 import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
+import io.openmessaging.benchmark.worker.commands.Stats;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
 
 public class LocalWorker implements Worker, ConsumerCallback {
@@ -121,6 +124,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
     private final StatCounter consumeErrorCounter;
 
     private final Recorder publishLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(1), 5);
+    private final Recorder onDemandPublishLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(1), 5);
     private final Recorder cumulativePublishLatencyRecorder = new Recorder(TimeUnit.HOURS.toMicros(1), 5);
     private final OpStatsLogger publishLatencyStats;
 
@@ -279,6 +283,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
                                     publishLatencyStats.registerSuccessfulEvent(microTime, TimeUnit.MICROSECONDS);
                                     publishLatencyRecorder.recordValue(microTime);
                                     cumulativePublishLatencyRecorder.recordValue(microTime);
+                                    onDemandPublishLatencyRecorder.recordValue(microTime);
                                 }
                                 return null;
                             });
@@ -304,6 +309,13 @@ public class LocalWorker implements Worker, ConsumerCallback {
     }
 
     @Override
+    public Stats getOnDemandStats() {
+        Stats stats = new Stats();
+        stats.publishLatency = onDemandPublishLatencyRecorder.getIntervalHistogram();
+        return stats;
+    }
+
+    @Override
     public PeriodStats getPeriodStats() {
         PeriodStats stats = new PeriodStats();
 
@@ -317,7 +329,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
         stats.consumerErrors = consumeErrorCounter.sinceLast();
 
         stats.totalMessagesSent = messagesSentCounter.getTotal();
-        stats.totalMessagesReceived = messagesSentCounter.getTotal();
+        stats.totalMessagesReceived = messagesReceivedCounter.getTotal();
 
         stats.publishLatency = publishLatencyRecorder.getIntervalHistogram();
         stats.endToEndLatency = endToEndLatencyRecorder.getIntervalHistogram();
@@ -347,17 +359,35 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
         stats.elapsedMillis = System.currentTimeMillis() - startCounter;
 
+        stats.fetchLatencyAvg = fetchBenchmarkMetric(MetricsEnabled.FETCH_LATENCY_AVG, this.consumers.stream()
+                .filter(i -> i instanceof MetricsEnabled)
+                .map(i -> (MetricsEnabled)i)
+                .collect(Collectors.toList()));
+
+        stats.produceThrottleTimeAvg = fetchBenchmarkMetric(MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG, this.producers.stream()
+                .filter(i -> i instanceof MetricsEnabled)
+                .map(i -> (MetricsEnabled)i)
+                .collect(Collectors.toList()));
+
+        stats.recordQueueTimeAvg = fetchBenchmarkMetric(MetricsEnabled.RECORD_QUEUE_TIME_AVG, this.producers.stream()
+                .filter(i -> i instanceof MetricsEnabled)
+                .map(i -> (MetricsEnabled)i)
+                .collect(Collectors.toList()));
+
+        return stats;
+    }
+
+    private static <T extends MetricsEnabled> Double fetchBenchmarkMetric(String metricName, List<T> list) {
         DoubleAdder latencyAvg = new DoubleAdder();
-        for (BenchmarkConsumer bc : this.consumers) {
+        for (MetricsEnabled bc : list) {
             Map<String, Object> consumerStats = bc.supplyStats();
             for (Map.Entry<String, Object> entry : consumerStats.entrySet()) {
-                if (entry.getKey().equals(BenchmarkConsumer.FETCH_LATENCY_AVG)) {
+                if (entry.getKey().equals(metricName)) {
                     latencyAvg.add((double)entry.getValue());
                 }
             }
         }
-        stats.fetchLatencyAvg = latencyAvg.doubleValue()/this.consumers.size();
-        return stats;
+        return latencyAvg.doubleValue()/list.size();
     }
 
     @Override
@@ -420,6 +450,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
         cumulativePublishLatencyRecorder.reset();
         endToEndLatencyRecorder.reset();
         endToEndCumulativeLatencyRecorder.reset();
+        onDemandPublishLatencyRecorder.reset();
 
         messagesSentCounter.reset();
         bytesSentCounter.reset();

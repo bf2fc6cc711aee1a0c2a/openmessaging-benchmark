@@ -58,6 +58,7 @@ import io.openmessaging.benchmark.worker.commands.CountersStats;
 import io.openmessaging.benchmark.worker.commands.CumulativeLatencies;
 import io.openmessaging.benchmark.worker.commands.PeriodStats;
 import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
+import io.openmessaging.benchmark.worker.commands.Stats;
 import io.openmessaging.benchmark.worker.commands.TopicSubscription;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
 import static org.asynchttpclient.Dsl.*;
@@ -263,6 +264,21 @@ public class DistributedWorkersEnsemble implements Worker {
     }
 
     @Override
+    public Stats getOnDemandStats() {
+        List<Stats> individualStats = get(workers, "/ondemand-stats", Stats.class);
+        Stats stats = new Stats();
+        individualStats.forEach(is -> {
+            try {
+                stats.publishLatency.add(Histogram.decodeFromCompressedByteBuffer(
+                        ByteBuffer.wrap(is.publishLatencyBytes), TimeUnit.SECONDS.toMicros(30)));
+            } catch (ArrayIndexOutOfBoundsException | DataFormatException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        return stats;
+    }
+
+    @Override
     public CumulativeLatencies getCumulativeLatencies() {
         List<CumulativeLatencies> individualStats = get(workers, "/cumulative-latencies", CumulativeLatencies.class);
 
@@ -295,20 +311,28 @@ public class DistributedWorkersEnsemble implements Worker {
         List<CountersStats> individualStats = get(workers, "/counters-stats", CountersStats.class);
 
         CountersStats stats = new CountersStats();
-        DoubleAdder latency = new DoubleAdder();
         individualStats.forEach(is -> {
             stats.messagesSent += is.messagesSent;
             stats.messagesReceived += is.messagesReceived;
             stats.elapsedMillis += is.elapsedMillis;
-            if (!is.fetchLatencyAvg.isNaN()) {
-                latency.add(is.fetchLatencyAvg);
-            }
             stats.consumerErrors += is.consumerErrors;
             stats.publishErrors += is.publishErrors;
         });
         stats.elapsedMillis /= workers.size();
-        stats.fetchLatencyAvg = latency.doubleValue()/consumerWorkers.size();
+        stats.fetchLatencyAvg = statAvg(individualStats.stream().map(s -> s.fetchLatencyAvg).collect(Collectors.toList()), consumerWorkers.size());
+        stats.produceThrottleTimeAvg = statAvg(individualStats.stream().map(s -> s.produceThrottleTimeAvg).collect(Collectors.toList()), producerWorkers.size());
+        stats.recordQueueTimeAvg = statAvg(individualStats.stream().map(s -> s.recordQueueTimeAvg).collect(Collectors.toList()), producerWorkers.size());
         return stats;
+    }
+
+    private static Double statAvg(List<Double> individualStats, int size) {
+        DoubleAdder adder = new DoubleAdder();
+        for (Double stat : individualStats) {
+            if (!stat.isNaN()) {
+                adder.add(stat);
+            }
+        }
+        return adder.doubleValue()/size;
     }
 
     @Override

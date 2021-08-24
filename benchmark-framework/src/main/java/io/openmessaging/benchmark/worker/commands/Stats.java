@@ -18,13 +18,13 @@
  */
 package io.openmessaging.benchmark.worker.commands;
 
-public class CountersStats {
-    public long messagesSent;
-    public long messagesReceived;
-    public double elapsedMillis;
-    public Double fetchLatencyAvg;
-    public long publishErrors;
-    public long consumerErrors;
-    public Double produceThrottleTimeAvg;
-    public Double recordQueueTimeAvg;
+import java.util.concurrent.TimeUnit;
+import org.HdrHistogram.Histogram;
+
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+public class Stats {
+    @JsonIgnore
+    public Histogram publishLatency = HistogramFactory.create(TimeUnit.SECONDS.toMicros(60));
+    public byte[] publishLatencyBytes;
 }

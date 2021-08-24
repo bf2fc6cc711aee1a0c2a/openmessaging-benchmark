@@ -16,15 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package io.openmessaging.benchmark.worker.commands;
+package io.openmessaging.benchmark.driver;
 
-public class CountersStats {
-    public long messagesSent;
-    public long messagesReceived;
-    public double elapsedMillis;
-    public Double fetchLatencyAvg;
-    public long publishErrors;
-    public long consumerErrors;
-    public Double produceThrottleTimeAvg;
-    public Double recordQueueTimeAvg;
+import java.util.Collections;
+import java.util.Map;
+
+public interface MetricsEnabled {
+    public static final String FETCH_LATENCY_AVG = "fetch-latency-avg";
+    public static final String PRODUCE_THROTTLE_TIME_AVG = "produce-throttle-time-avg";
+    public static final String RECORD_QUEUE_TIME_AVG = "record-queue-time-avg";
+
+    default Map<String, Object> supplyStats() {
+        return Collections.emptyMap();
+    }
 }
