@@ -67,7 +67,7 @@ public class WorkerHandler {
         app.get("/cumulative-latencies", this::handleCumulativeLatencies);
         app.get("/counters-stats", this::handleCountersStats);
         app.post("/reset-stats", this::handleResetStats);
-        app.post("/ondemand-stats", this::handleOnDemandStats);
+        app.get("/ondemand-stats", this::handleOnDemandStats);
 
         app.exception(Exception.class, (e, ctx) -> {
             log.error("Request handler: {} - Exception: {}", ctx.path(), e.getMessage(), e);
