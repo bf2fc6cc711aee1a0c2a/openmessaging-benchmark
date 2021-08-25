@@ -22,9 +22,9 @@ public class CountersStats {
     public long messagesSent;
     public long messagesReceived;
     public double elapsedMillis;
-    public Double fetchLatencyAvg;
+    public double fetchLatencyAvg;
     public long publishErrors;
     public long consumerErrors;
-    public Double produceThrottleTimeAvg;
-    public Double recordQueueTimeAvg;
+    public double produceThrottleTimeAvg;
+    public double recordQueueTimeAvg;
 }
