@@ -321,9 +321,9 @@ public class DistributedWorkersEnsemble implements Worker {
             stats.recordQueueTimeAvg += is.recordQueueTimeAvg;
         });
         stats.elapsedMillis /= workers.size();
-        stats.fetchLatencyAvg /= workers.size();
-        stats.produceThrottleTimeAvg /= workers.size();
-        stats.recordQueueTimeAvg /= workers.size();
+        stats.fetchLatencyAvg /= consumerWorkers.size();
+        stats.produceThrottleTimeAvg /= producerWorkers.size();
+        stats.recordQueueTimeAvg /= producerWorkers.size();
         return stats;
     }
 
