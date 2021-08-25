@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.DoubleAdder;
 import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
@@ -317,22 +316,15 @@ public class DistributedWorkersEnsemble implements Worker {
             stats.elapsedMillis += is.elapsedMillis;
             stats.consumerErrors += is.consumerErrors;
             stats.publishErrors += is.publishErrors;
+            stats.fetchLatencyAvg += is.fetchLatencyAvg;
+            stats.produceThrottleTimeAvg += is.produceThrottleTimeAvg;
+            stats.recordQueueTimeAvg += is.recordQueueTimeAvg;
         });
         stats.elapsedMillis /= workers.size();
-        stats.fetchLatencyAvg = statAvg(individualStats.stream().map(s -> s.fetchLatencyAvg).collect(Collectors.toList()), consumerWorkers.size());
-        stats.produceThrottleTimeAvg = statAvg(individualStats.stream().map(s -> s.produceThrottleTimeAvg).collect(Collectors.toList()), producerWorkers.size());
-        stats.recordQueueTimeAvg = statAvg(individualStats.stream().map(s -> s.recordQueueTimeAvg).collect(Collectors.toList()), producerWorkers.size());
+        stats.fetchLatencyAvg /= workers.size();
+        stats.produceThrottleTimeAvg /= workers.size();
+        stats.recordQueueTimeAvg /= workers.size();
         return stats;
-    }
-
-    private static Double statAvg(List<Double> individualStats, int size) {
-        DoubleAdder adder = new DoubleAdder();
-        for (Double stat : individualStats) {
-            if (!stat.isNaN()) {
-                adder.add(stat);
-            }
-        }
-        return adder.doubleValue()/size;
     }
 
     @Override

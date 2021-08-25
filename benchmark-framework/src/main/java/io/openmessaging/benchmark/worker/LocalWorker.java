@@ -24,16 +24,16 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Collectors;
 
@@ -359,35 +359,19 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
         stats.elapsedMillis = System.currentTimeMillis() - startCounter;
 
-        stats.fetchLatencyAvg = fetchBenchmarkMetric(MetricsEnabled.FETCH_LATENCY_AVG, this.consumers.stream()
-                .filter(i -> i instanceof MetricsEnabled)
-                .map(i -> (MetricsEnabled)i)
-                .collect(Collectors.toList()));
+        stats.fetchLatencyAvg = fetchBenchmarkMetric(MetricsEnabled.FETCH_LATENCY_AVG, this.consumers);
 
-        stats.produceThrottleTimeAvg = fetchBenchmarkMetric(MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG, this.producers.stream()
-                .filter(i -> i instanceof MetricsEnabled)
-                .map(i -> (MetricsEnabled)i)
-                .collect(Collectors.toList()));
+        stats.produceThrottleTimeAvg = fetchBenchmarkMetric(MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG, this.producers);
 
-        stats.recordQueueTimeAvg = fetchBenchmarkMetric(MetricsEnabled.RECORD_QUEUE_TIME_AVG, this.producers.stream()
-                .filter(i -> i instanceof MetricsEnabled)
-                .map(i -> (MetricsEnabled)i)
-                .collect(Collectors.toList()));
+        stats.recordQueueTimeAvg = fetchBenchmarkMetric(MetricsEnabled.RECORD_QUEUE_TIME_AVG, this.producers);
 
         return stats;
     }
 
-    private static <T extends MetricsEnabled> Double fetchBenchmarkMetric(String metricName, List<T> list) {
-        DoubleAdder latencyAvg = new DoubleAdder();
-        for (MetricsEnabled bc : list) {
-            Map<String, Object> consumerStats = bc.supplyStats();
-            for (Map.Entry<String, Object> entry : consumerStats.entrySet()) {
-                if (entry.getKey().equals(metricName)) {
-                    latencyAvg.add((double)entry.getValue());
-                }
-            }
-        }
-        return latencyAvg.doubleValue()/list.size();
+    private static Double fetchBenchmarkMetric(String metricName, Collection<?> list) {
+        return list.stream().filter(MetricsEnabled.class::isInstance).map(MetricsEnabled.class::cast)
+                .map(MetricsEnabled::supplyStats).map(s -> s.get(metricName)).filter(Objects::nonNull)
+                .collect(Collectors.averagingDouble(Double.class::cast));
     }
 
     @Override
