@@ -23,4 +23,8 @@ public class CountersStats {
     public long messagesReceived;
     public double elapsedMillis;
     public Double fetchLatencyAvg;
+    public long publishErrors;
+    public long consumerErrors;
+    public Double produceThrottleTimeAvg;
+    public Double recordQueueTimeAvg;
 }

@@ -18,19 +18,15 @@
  */
 package io.openmessaging.benchmark.driver;
 
-/**
- * Callback that the driver implementation calls when a message is received
- */
-public interface ConsumerCallback {
-    /**
-     * Driver should invoke this method once for each message received
-     *
-     * @param payload
-     *            the received message payload
-     * @param publishTimestamp
-     *            the publish timestamp in milliseconds
-     */
-    void messageReceived(byte[] payload, long publishTimestamp);
+import java.util.Collections;
+import java.util.Map;
 
-    void exception(Exception e);
+public interface MetricsEnabled {
+    public static final String FETCH_LATENCY_AVG = "fetch-latency-avg";
+    public static final String PRODUCE_THROTTLE_TIME_AVG = "produce-throttle-time-avg";
+    public static final String RECORD_QUEUE_TIME_AVG = "record-queue-time-avg";
+
+    default Map<String, Object> supplyStats() {
+        return Collections.emptyMap();
+    }
 }

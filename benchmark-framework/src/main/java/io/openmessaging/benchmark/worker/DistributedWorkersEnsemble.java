@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.DoubleAdder;
 import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
@@ -58,6 +57,7 @@ import io.openmessaging.benchmark.worker.commands.CountersStats;
 import io.openmessaging.benchmark.worker.commands.CumulativeLatencies;
 import io.openmessaging.benchmark.worker.commands.PeriodStats;
 import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
+import io.openmessaging.benchmark.worker.commands.Stats;
 import io.openmessaging.benchmark.worker.commands.TopicSubscription;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
 import static org.asynchttpclient.Dsl.*;
@@ -243,6 +243,8 @@ public class DistributedWorkersEnsemble implements Worker {
             stats.totalMessagesSent += is.totalMessagesSent;
             stats.totalMessagesReceived += is.totalMessagesReceived;
             stats.elapsedMillis += is.elapsedMillis;
+            stats.consumerErrors += is.consumerErrors;
+            stats.publishErrors += is.publishErrors;
 
             try {
                 stats.publishLatency.add(Histogram.decodeFromCompressedByteBuffer(
@@ -257,6 +259,21 @@ public class DistributedWorkersEnsemble implements Worker {
         });
         stats.elapsedMillis /= workers.size();
 
+        return stats;
+    }
+
+    @Override
+    public Stats getOnDemandStats() {
+        List<Stats> individualStats = get(workers, "/ondemand-stats", Stats.class);
+        Stats stats = new Stats();
+        individualStats.forEach(is -> {
+            try {
+                stats.publishLatency.add(Histogram.decodeFromCompressedByteBuffer(
+                        ByteBuffer.wrap(is.publishLatencyBytes), TimeUnit.SECONDS.toMicros(30)));
+            } catch (ArrayIndexOutOfBoundsException | DataFormatException e) {
+                throw new RuntimeException(e);
+            }
+        });
         return stats;
     }
 
@@ -293,17 +310,20 @@ public class DistributedWorkersEnsemble implements Worker {
         List<CountersStats> individualStats = get(workers, "/counters-stats", CountersStats.class);
 
         CountersStats stats = new CountersStats();
-        DoubleAdder latency = new DoubleAdder();
         individualStats.forEach(is -> {
             stats.messagesSent += is.messagesSent;
             stats.messagesReceived += is.messagesReceived;
             stats.elapsedMillis += is.elapsedMillis;
-            if (!is.fetchLatencyAvg.isNaN()) {
-                latency.add(is.fetchLatencyAvg);
-            }
+            stats.consumerErrors += is.consumerErrors;
+            stats.publishErrors += is.publishErrors;
+            stats.fetchLatencyAvg += is.fetchLatencyAvg;
+            stats.produceThrottleTimeAvg += is.produceThrottleTimeAvg;
+            stats.recordQueueTimeAvg += is.recordQueueTimeAvg;
         });
         stats.elapsedMillis /= workers.size();
-        stats.fetchLatencyAvg = latency.doubleValue()/consumerWorkers.size();
+        stats.fetchLatencyAvg /= workers.size();
+        stats.produceThrottleTimeAvg /= workers.size();
+        stats.recordQueueTimeAvg /= workers.size();
         return stats;
     }
 

@@ -18,22 +18,36 @@
  */
 package io.openmessaging.benchmark.driver.kafka;
 
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
+import io.openmessaging.benchmark.driver.BenchmarkProducer;
+import io.openmessaging.benchmark.driver.MetricsEnabled;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-import io.openmessaging.benchmark.driver.BenchmarkProducer;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
 
-public class KafkaBenchmarkProducer implements BenchmarkProducer {
+import java.lang.management.ManagementFactory;
+import java.util.Map;
+import java.util.Optional;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+
+public class KafkaBenchmarkProducer implements BenchmarkProducer, MetricsEnabled {
+    private static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkProducer.class);
     private final KafkaProducer<String, byte[]> producer;
     private final String topic;
+    private String clientId;
+    private MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
-    public KafkaBenchmarkProducer(KafkaProducer<String, byte[]> producer, String topic) {
+    public KafkaBenchmarkProducer(KafkaProducer<String, byte[]> producer, String topic, String clientId) {
         this.producer = producer;
         this.topic = topic;
+        this.clientId = clientId;
     }
 
     @Override
@@ -51,6 +65,25 @@ public class KafkaBenchmarkProducer implements BenchmarkProducer {
         });
 
         return future;
+    }
+
+    @Override
+    public Map<String, Object> supplyStats() {
+        Map<String, Object> stats = new TreeMap<>();
+        try {
+            ObjectName fetchManagerName = new ObjectName("kafka.producer:type=producer-metrics,client-id="+this.clientId);
+            Object objThrottle = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG);
+            Object objQueueTime = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.RECORD_QUEUE_TIME_AVG);
+            if (objThrottle instanceof Double && !((Double)objThrottle).isNaN()) {
+                stats.put(MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG, objThrottle);
+            }
+            if (objQueueTime instanceof Double && !((Double)objQueueTime).isNaN()) {
+                stats.put(MetricsEnabled.RECORD_QUEUE_TIME_AVG, objQueueTime);
+            }
+        } catch (Exception e) {
+            log.error("exception fetching 'fetch-latency-avg' metric");
+        }
+        return stats;
     }
 
     @Override

@@ -130,8 +130,14 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
 
     @Override
     public CompletableFuture<BenchmarkProducer> createProducer(String topic) {
-        KafkaProducer<String, byte[]> kafkaProducer = new KafkaProducer<>(producerProperties);
-        BenchmarkProducer benchmarkProducer = new KafkaBenchmarkProducer(kafkaProducer, topic);
+        String clientId = "producer-"+topic+CONSUMER_CLIENT_ID_SEQUENCE.getAndIncrement();
+
+        Properties properties = new Properties();
+        producerProperties.forEach((key, value) -> properties.put(key, value));
+        properties.put(ProducerConfig.CLIENT_ID_CONFIG, clientId);
+
+        KafkaProducer<String, byte[]> kafkaProducer = new KafkaProducer<>(properties);
+        BenchmarkProducer benchmarkProducer = new KafkaBenchmarkProducer(kafkaProducer, topic, clientId);
         try {
             // Add to producer list to close later
             producers.add(benchmarkProducer);
