@@ -240,11 +240,18 @@ public class WorkloadGenerator implements AutoCloseable {
             }
 
             boolean success = true;
-            // If the consumers are building backlog, we should slow down publish rate
-            if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98
+
+            // If we are over producing, slow the producers down
+            if (publishRateInLastPeriod < .98 * currentRate) {
+                currentRate = (Math.max(maxRate, publishRateInLastPeriod) + currentRate) / 2;
+                log.info("Producers are not meeting requested rate. reducing to {}", dec.format(currentRate));
+                worker.adjustPublishRate(currentRate);
+                success = false;
+            } else // If the consumers are building backlog, we should slow down publish rate
+                if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98
                     || (successfulPeriods > 0 && (localTotalMessagesReceivedCounter - windowStartTotalMessagesReceivedCounter) <
                             (localTotalMessagesSentCounter - windowStartTotalMessagesSentCounter) * .97)) {
-                currentRate = (maxRate + currentRate) / 2;
+                currentRate = (Math.max(maxRate, receiveRateInLastPeriod) + currentRate) / 2;
                 log.info("Consumers are not meeting requested rate. reducing to {}", dec.format(currentRate));
                 worker.adjustPublishRate(currentRate);
                 success = false;
@@ -274,13 +281,6 @@ public class WorkloadGenerator implements AutoCloseable {
                     success = false;
                 }
                 warming = true;
-            } else if (publishRateInLastPeriod < .97 * currentRate) {
-                currentRate = Math.max(maxRate, (maxRate + publishRateInLastPeriod) / 2);
-                log.info("Producers are not meeting requested rate. reducing to {}", dec.format(currentRate));
-                worker.adjustPublishRate(currentRate);
-                success = false;
-            } else if (microsToMillis(onDemandStats.publishLatency.getMean()) > 10d) {
-
             }
 
             if (!success) {
@@ -496,7 +496,7 @@ public class WorkloadGenerator implements AutoCloseable {
                     throughputFormat.format(microsToMillis(stats.endToEndLatency.getMaxValue())));
 
             if (stats.publishErrors > 0 || stats.consumerErrors > 0) {
-                log.warn("Publish errors {} | Consumer Errors {}", stats.publishErrors, stats.consumerErrors);
+                throw new IllegalStateException(String.format("Experience %s publish and %s consume errors", stats.publishErrors, stats.consumerErrors));
             }
 
             result.publishRate.add(publishRate);
