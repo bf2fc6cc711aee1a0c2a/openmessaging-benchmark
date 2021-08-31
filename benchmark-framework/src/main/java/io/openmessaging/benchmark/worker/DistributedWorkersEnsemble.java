@@ -248,7 +248,7 @@ public class DistributedWorkersEnsemble implements Worker {
 
             try {
                 stats.publishLatency.add(Histogram.decodeFromCompressedByteBuffer(
-                        ByteBuffer.wrap(is.publishLatencyBytes), TimeUnit.SECONDS.toMicros(30)));
+                        ByteBuffer.wrap(is.publishLatencyBytes), TimeUnit.SECONDS.toMicros(60)));
 
                 stats.endToEndLatency.add(Histogram.decodeFromCompressedByteBuffer(
                         ByteBuffer.wrap(is.endToEndLatencyBytes), TimeUnit.HOURS.toMicros(12)));
