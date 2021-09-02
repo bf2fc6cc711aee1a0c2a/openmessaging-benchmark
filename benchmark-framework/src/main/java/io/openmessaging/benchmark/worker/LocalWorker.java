@@ -365,6 +365,10 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
         stats.recordQueueTimeAvg = fetchBenchmarkMetric(MetricsEnabled.RECORD_QUEUE_TIME_AVG, this.producers);
 
+        stats.connectionCount = fetchConnectionCount(MetricsEnabled.CONNECTION_COUNT, this.producers)
+                + fetchConnectionCount(MetricsEnabled.CONNECTION_COUNT, this.consumers);
+
+        log.info("local worker - connection count = " + stats.connectionCount);
         return stats;
     }
 
@@ -372,6 +376,12 @@ public class LocalWorker implements Worker, ConsumerCallback {
         return list.stream().filter(MetricsEnabled.class::isInstance).map(MetricsEnabled.class::cast)
                 .map(MetricsEnabled::supplyStats).map(s -> s.get(metricName)).filter(Objects::nonNull)
                 .collect(Collectors.averagingDouble(Double.class::cast));
+    }
+
+    private static double fetchConnectionCount(String metricName, Collection<?> list) {
+        return list.stream().filter(MetricsEnabled.class::isInstance).map(MetricsEnabled.class::cast)
+                .map(MetricsEnabled::supplyStats).map(s -> s.get(metricName)).filter(Objects::nonNull)
+                .collect(Collectors.summingDouble(Double.class::cast));
     }
 
     @Override

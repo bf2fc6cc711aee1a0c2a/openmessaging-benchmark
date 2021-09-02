@@ -77,4 +77,5 @@ public class TestResult {
     public Double maxSustainableRate;
     public long aggregatedPublishErrors;
     public long aggregatedConsumerErrors;
+    public double connectionCount;
 }

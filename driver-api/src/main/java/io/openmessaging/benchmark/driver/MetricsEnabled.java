@@ -25,6 +25,7 @@ public interface MetricsEnabled {
     public static final String FETCH_LATENCY_AVG = "fetch-latency-avg";
     public static final String PRODUCE_THROTTLE_TIME_AVG = "produce-throttle-time-avg";
     public static final String RECORD_QUEUE_TIME_AVG = "record-queue-time-avg";
+    public static final String CONNECTION_COUNT = "connection-count";
 
     default Map<String, Object> supplyStats() {
         return Collections.emptyMap();

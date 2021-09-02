@@ -74,11 +74,15 @@ public class KafkaBenchmarkProducer implements BenchmarkProducer, MetricsEnabled
             ObjectName fetchManagerName = new ObjectName("kafka.producer:type=producer-metrics,client-id="+this.clientId);
             Object objThrottle = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG);
             Object objQueueTime = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.RECORD_QUEUE_TIME_AVG);
+            Object objConnectionCount = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.CONNECTION_COUNT);
             if (objThrottle instanceof Double && !((Double)objThrottle).isNaN()) {
                 stats.put(MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG, objThrottle);
             }
             if (objQueueTime instanceof Double && !((Double)objQueueTime).isNaN()) {
                 stats.put(MetricsEnabled.RECORD_QUEUE_TIME_AVG, objQueueTime);
+            }
+            if (objConnectionCount instanceof Double && !((Double)objConnectionCount).isNaN()) {
+                stats.put(MetricsEnabled.CONNECTION_COUNT, objConnectionCount);
             }
         } catch (Exception e) {
             log.error("exception fetching 'fetch-latency-avg' metric");
