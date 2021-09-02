@@ -472,6 +472,8 @@ public class WorkloadGenerator implements AutoCloseable {
             long currentBacklog = (workload.subscriptionsPerTopic * stats.totalMessagesSent - stats.totalMessagesReceived);
             log.info("");
 
+            log.info("connection.count = " + counterStats.connectionCount);
+
             log.info(
                     "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s | Consumer Latency (ms) avg: {} | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
                     rateFormat.format(publishRate), throughputFormat.format(publishThroughput),
@@ -580,7 +582,7 @@ public class WorkloadGenerator implements AutoCloseable {
 
                 result.aggregatedPublishErrors = counterStats.publishErrors;
                 result.aggregatedConsumerErrors = counterStats.consumerErrors;
-
+                result.connectionCount = counterStats.connectionCount;
                 break;
             }
         }

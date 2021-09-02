@@ -27,4 +27,5 @@ public class CountersStats {
     public long consumerErrors;
     public double produceThrottleTimeAvg;
     public double recordQueueTimeAvg;
+    public double connectionCount;
 }

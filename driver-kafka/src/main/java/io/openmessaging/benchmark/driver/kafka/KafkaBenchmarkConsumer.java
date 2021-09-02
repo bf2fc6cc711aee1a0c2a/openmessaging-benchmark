@@ -84,11 +84,16 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer, MetricsEnabled
         try {
             ObjectName fetchManagerName = new ObjectName("kafka.consumer:type=consumer-fetch-manager-metrics,client-id="+this.clientId);
             Object obj = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.FETCH_LATENCY_AVG);
+            ObjectName consumerMetrics = new ObjectName("kafka.consumer:type=consumer-metrics,client-id="+this.clientId);
+            Object objConnectionCount = mbeanServer.getAttribute(consumerMetrics, MetricsEnabled.CONNECTION_COUNT);
             if (obj instanceof Double && !((Double)obj).isNaN()) {
                 stats.put(MetricsEnabled.FETCH_LATENCY_AVG, obj);
             }
+            if (objConnectionCount instanceof Double  && !((Double)objConnectionCount).isNaN()) {
+                stats.put(MetricsEnabled.CONNECTION_COUNT, objConnectionCount);
+            }
         } catch (Exception e) {
-            log.error("exception fetching 'fetch-latency-avg' metric");
+            log.error("exception fetching metrics", e);
         }
         return stats;
     }
