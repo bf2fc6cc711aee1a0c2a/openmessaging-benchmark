@@ -29,7 +29,7 @@ public class Workload {
     /** Number of partitions each topic will contain */
     public int partitionsPerTopic;
 
-    public KeyDistributorType keyDistributor = KeyDistributorType.NO_KEY;
+    public KeyDistributorType keyDistributor = KeyDistributorType.KEY_ROUND_ROBIN;
 
     public int messageSize;
 
