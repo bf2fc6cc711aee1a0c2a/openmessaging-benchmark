@@ -320,11 +320,17 @@ public class DistributedWorkersEnsemble implements Worker {
             stats.produceThrottleTimeAvg += is.produceThrottleTimeAvg;
             stats.recordQueueTimeAvg += is.recordQueueTimeAvg;
             stats.connectionCount += is.connectionCount;
+            stats.producers += is.producers;
+            stats.consumers += is.consumers;
         });
         stats.elapsedMillis /= workers.size();
-        stats.fetchLatencyAvg /= consumerWorkers.size();
-        stats.produceThrottleTimeAvg /= producerWorkers.size();
-        stats.recordQueueTimeAvg /= producerWorkers.size();
+        if (stats.consumers != 0) {
+            stats.fetchLatencyAvg /= stats.consumers;
+        }
+        if (stats.producers != 0) {
+            stats.produceThrottleTimeAvg /= stats.producers;
+            stats.recordQueueTimeAvg /= stats.producers;
+        }
         return stats;
     }
 
