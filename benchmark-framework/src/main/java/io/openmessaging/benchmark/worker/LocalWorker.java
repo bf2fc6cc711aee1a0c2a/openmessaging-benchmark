@@ -360,8 +360,10 @@ public class LocalWorker implements Worker, ConsumerCallback {
         stats.elapsedMillis = System.currentTimeMillis() - startCounter;
 
         stats.fetchLatencyAvg = fetchBenchmarkMetric(MetricsEnabled.FETCH_LATENCY_AVG, this.consumers);
+        stats.consumers = this.consumers.size();
 
         stats.produceThrottleTimeAvg = fetchBenchmarkMetric(MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG, this.producers);
+        stats.producers = this.producers.size();
 
         stats.recordQueueTimeAvg = fetchBenchmarkMetric(MetricsEnabled.RECORD_QUEUE_TIME_AVG, this.producers);
 

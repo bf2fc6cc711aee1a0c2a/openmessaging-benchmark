@@ -391,6 +391,8 @@ public class WorkloadGenerator implements AutoCloseable {
 
         long requestedBacklogSize = workload.consumerBacklogSizeGB * 1024 * 1024 * 1024;
 
+        worker.adjustPublishRate(workload.producerRate * 10);
+
         while (true) {
             CountersStats stats = worker.getCountersStats();
             long currentBacklogSize = (workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived)
@@ -406,6 +408,8 @@ public class WorkloadGenerator implements AutoCloseable {
                 throw new RuntimeException(e);
             }
         }
+
+        worker.adjustPublishRate(workload.producerRate);
 
         log.info("--- Start draining backlog ---");
 

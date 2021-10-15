@@ -28,4 +28,6 @@ public class CountersStats {
     public double produceThrottleTimeAvg;
     public double recordQueueTimeAvg;
     public double connectionCount;
+    public int producers;
+    public int consumers;
 }
