@@ -62,6 +62,7 @@ public class TestResult {
     public List<Double> endToEndLatency999pct = new ArrayList<>();
     public List<Double> endToEndLatency9999pct = new ArrayList<>();
     public List<Double> endToEndLatencyMax = new ArrayList<>();
+    public List<Double> connectionCount = new ArrayList<>();
 
     public Map<Double, Double> aggregatedEndToEndLatencyQuantiles = new TreeMap<>();
 
@@ -77,5 +78,4 @@ public class TestResult {
     public Double maxSustainableRate;
     public long aggregatedPublishErrors;
     public long aggregatedConsumerErrors;
-    public double connectionCount;
 }

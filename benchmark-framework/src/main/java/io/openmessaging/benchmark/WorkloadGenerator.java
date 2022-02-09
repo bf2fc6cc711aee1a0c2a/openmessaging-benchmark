@@ -525,6 +525,7 @@ public class WorkloadGenerator implements AutoCloseable {
             result.endToEndLatency999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.9)));
             result.endToEndLatency9999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.99)));
             result.endToEndLatencyMax.add(microsToMillis(stats.endToEndLatency.getMaxValue()));
+            result.connectionCount.add(counterStats.connectionCount);
 
             if (now >= testEndTime && !needToWaitForBacklogDraining) {
                 boolean complete = false;
@@ -586,7 +587,6 @@ public class WorkloadGenerator implements AutoCloseable {
 
                 result.aggregatedPublishErrors = counterStats.publishErrors;
                 result.aggregatedConsumerErrors = counterStats.consumerErrors;
-                result.connectionCount = counterStats.connectionCount;
                 break;
             }
         }
