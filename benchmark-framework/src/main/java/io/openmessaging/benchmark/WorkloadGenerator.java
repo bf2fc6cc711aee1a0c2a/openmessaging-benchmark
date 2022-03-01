@@ -479,7 +479,7 @@ public class WorkloadGenerator implements AutoCloseable {
             log.info("connection.count = " + counterStats.connectionCount);
 
             log.info(
-                    "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s | Consumer Latency (ms) avg: {} | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
+                    "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s | Consumer Latency (ms) avg: {} | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {} | Pub Delay Latency (us) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
                     rateFormat.format(publishRate), throughputFormat.format(publishThroughput),
                     rateFormat.format(consumeRate), throughputFormat.format(consumeThroughput),
                     dec.format(counterStats.fetchLatencyAvg),
@@ -488,7 +488,12 @@ public class WorkloadGenerator implements AutoCloseable {
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(50))),
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(99))),
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(99.9))),
-                    throughputFormat.format(microsToMillis(stats.publishLatency.getMaxValue())));
+                    throughputFormat.format(microsToMillis(stats.publishLatency.getMaxValue())),
+                    dec.format(stats.publishDelayLatency.getMean()),
+                    dec.format(stats.publishDelayLatency.getValueAtPercentile(50)),
+                    dec.format(stats.publishDelayLatency.getValueAtPercentile(99)),
+                    dec.format(stats.publishDelayLatency.getValueAtPercentile(99.9)),
+                    throughputFormat.format(stats.publishDelayLatency.getMaxValue()));
 
             log.info("Avg Producer Throttle Time (ms) {} | Avg Producer Record Queue Time (ms) {}",
                     counterStats.produceThrottleTimeAvg,
@@ -516,6 +521,16 @@ public class WorkloadGenerator implements AutoCloseable {
             result.publishLatency999pct.add(microsToMillis(stats.publishLatency.getValueAtPercentile(99.9)));
             result.publishLatency9999pct.add(microsToMillis(stats.publishLatency.getValueAtPercentile(99.99)));
             result.publishLatencyMax.add(microsToMillis(stats.publishLatency.getMaxValue()));
+
+            result.publishDelayLatencyAvg.add(stats.publishDelayLatency.getMean());
+            result.publishDelayLatency50pct.add(stats.publishDelayLatency.getValueAtPercentile(50));
+            result.publishDelayLatency75pct.add(stats.publishDelayLatency.getValueAtPercentile(75));
+            result.publishDelayLatency95pct.add(stats.publishDelayLatency.getValueAtPercentile(95));
+            result.publishDelayLatency99pct.add(stats.publishDelayLatency.getValueAtPercentile(99));
+            result.publishDelayLatency999pct.add(stats.publishDelayLatency.getValueAtPercentile(99.9));
+            result.publishDelayLatency9999pct.add(stats.publishDelayLatency.getValueAtPercentile(99.99));
+            result.publishDelayLatencyMax.add(stats.publishDelayLatency.getMaxValue());
+
 
             result.endToEndLatencyAvg.add(microsToMillis(stats.endToEndLatency.getMean()));
             result.endToEndLatency50pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(50)));
@@ -547,14 +562,21 @@ public class WorkloadGenerator implements AutoCloseable {
                 }
 
                 log.info(
-                        "----- Aggregated Pub Latency (ms) avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {}",
+                        "----- Aggregated Pub Latency (ms) avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {} | Pub Delay (us)  avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {}",
                         dec.format(microsToMillis(agg.publishLatency.getMean())),
                         dec.format(microsToMillis(agg.publishLatency.getValueAtPercentile(50))),
                         dec.format(microsToMillis(agg.publishLatency.getValueAtPercentile(95))),
                         dec.format(microsToMillis(agg.publishLatency.getValueAtPercentile(99))),
                         dec.format(microsToMillis(agg.publishLatency.getValueAtPercentile(99.9))),
                         dec.format(microsToMillis(agg.publishLatency.getValueAtPercentile(99.99))),
-                        throughputFormat.format(microsToMillis(agg.publishLatency.getMaxValue())));
+                        throughputFormat.format(microsToMillis(agg.publishLatency.getMaxValue())),
+                        dec.format(agg.publishDelayLatency.getMean()),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(50)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(95)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(99)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(99.9)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(99.99)),
+                        throughputFormat.format(agg.publishDelayLatency.getMaxValue()));
 
                 result.aggregatedPublishLatencyAvg = microsToMillis(agg.publishLatency.getMean());
                 result.aggregatedPublishLatency50pct = microsToMillis(agg.publishLatency.getValueAtPercentile(50));
@@ -564,6 +586,15 @@ public class WorkloadGenerator implements AutoCloseable {
                 result.aggregatedPublishLatency999pct = microsToMillis(agg.publishLatency.getValueAtPercentile(99.9));
                 result.aggregatedPublishLatency9999pct = microsToMillis(agg.publishLatency.getValueAtPercentile(99.99));
                 result.aggregatedPublishLatencyMax = microsToMillis(agg.publishLatency.getMaxValue());
+
+                result.aggregatedPublishDelayLatencyAvg = agg.publishDelayLatency.getMean();
+                result.aggregatedPublishDelayLatency50pct = agg.publishDelayLatency.getValueAtPercentile(50);
+                result.aggregatedPublishDelayLatency75pct = agg.publishDelayLatency.getValueAtPercentile(75);
+                result.aggregatedPublishDelayLatency95pct = agg.publishDelayLatency.getValueAtPercentile(95);
+                result.aggregatedPublishDelayLatency99pct = agg.publishDelayLatency.getValueAtPercentile(99);
+                result.aggregatedPublishDelayLatency999pct = agg.publishDelayLatency.getValueAtPercentile(99.9);
+                result.aggregatedPublishDelayLatency9999pct = agg.publishDelayLatency.getValueAtPercentile(99.99);
+                result.aggregatedPublishDelayLatencyMax = agg.publishDelayLatency.getMaxValue();
 
                 result.aggregatedEndToEndLatencyAvg = microsToMillis(agg.endToEndLatency.getMean());
                 result.aggregatedEndToEndLatency50pct = microsToMillis(agg.endToEndLatency.getValueAtPercentile(50));
@@ -578,6 +609,11 @@ public class WorkloadGenerator implements AutoCloseable {
                 agg.publishLatency.percentiles(100).forEach(value -> {
                     result.aggregatedPublishLatencyQuantiles.put(value.getPercentile(),
                             microsToMillis(value.getValueIteratedTo()));
+                });
+
+                agg.publishDelayLatency.percentiles(100).forEach(value -> {
+                    result.aggregatedPublishDelayLatencyQuantiles.put(value.getPercentile(),
+                            value.getValueIteratedTo());
                 });
 
                 agg.endToEndLatency.percentiles(100).forEach(value -> {

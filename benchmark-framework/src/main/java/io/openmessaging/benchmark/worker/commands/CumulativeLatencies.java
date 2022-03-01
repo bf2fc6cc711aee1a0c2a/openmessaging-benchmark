@@ -31,6 +31,10 @@ public class CumulativeLatencies {
     public byte[] publishLatencyBytes;
 
     @JsonIgnore
+    public Histogram publishDelayLatency = HistogramFactory.create(TimeUnit.SECONDS.toMicros(60));
+    public byte[] publishDelayLatencyBytes;
+
+    @JsonIgnore
     public Histogram endToEndLatency = HistogramFactory.create(TimeUnit.HOURS.toMicros(12));
     public byte[] endToEndLatencyBytes;
 
