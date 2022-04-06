@@ -26,6 +26,11 @@ import java.util.TreeMap;
 public class TestResult {
     public String workload;
     public String driver;
+    public long messageSize;
+    public int topics;
+    public int partitions;
+    public int producersPerTopic;
+    public int consumersPerTopic;
 
     public List<Double> publishRate = new ArrayList<>();
     public List<Double> consumeRate = new ArrayList<>();
@@ -52,7 +57,7 @@ public class TestResult {
     public Map<Double, Double> aggregatedPublishLatencyQuantiles = new TreeMap<>();
 
     // End to end latencies (from producer to consumer)
-    // Latencies are expressed in milliseconds
+    // Latencies are expressed in milliseconds (without decimals)
 
     public List<Double> endToEndLatencyAvg = new ArrayList<>();
     public List<Double> endToEndLatency50pct = new ArrayList<>();
@@ -75,7 +80,18 @@ public class TestResult {
     public double aggregatedEndToEndLatency9999pct;
     public double aggregatedEndToEndLatencyMax;
 
-    public Double maxSustainableRate;
     public long aggregatedPublishErrors;
     public long aggregatedConsumerErrors;
+
+    public int getTopics() {
+        return topics;
+    }
+
+    public int getPartitions() {
+        return partitions;
+    }
+
+    public long getMessageSize() {
+        return messageSize;
+    }
 }

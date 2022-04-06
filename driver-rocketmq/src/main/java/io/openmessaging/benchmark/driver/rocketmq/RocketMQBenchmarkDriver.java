@@ -30,12 +30,9 @@ import io.openmessaging.benchmark.driver.ConsumerCallback;
 import io.openmessaging.benchmark.driver.rocketmq.client.RocketMQClientConfig;
 import java.io.File;
 import java.io.IOException;
-import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -53,7 +50,6 @@ public class RocketMQBenchmarkDriver implements BenchmarkDriver {
     private DefaultMQAdminExt rmqAdmin;
     private RocketMQClientConfig rmqClientConfig;
     DefaultMQProducer rmqProducer;
-
     @Override
     public void initialize(final File configurationFile, final StatsLogger statsLogger) throws IOException {
         this.rmqClientConfig = readConfig(configurationFile);
@@ -85,8 +81,7 @@ public class RocketMQBenchmarkDriver implements BenchmarkDriver {
             topicConfig.setTopicName(topic);
 
             try {
-                Set<String> brokerList = CommandUtil.fetchMasterAddrByClusterName(this.rmqAdmin,
-                        this.rmqClientConfig.clusterName);
+                Set<String> brokerList = CommandUtil.fetchMasterAddrByClusterName(this.rmqAdmin, this.rmqClientConfig.clusterName);
                 topicConfig.setReadQueueNums(Math.max(1, partitions / brokerList.size()));
                 topicConfig.setWriteQueueNums(Math.max(1, partitions / brokerList.size()));
 
@@ -94,16 +89,9 @@ public class RocketMQBenchmarkDriver implements BenchmarkDriver {
                     this.rmqAdmin.createAndUpdateTopicConfig(brokerAddr, topicConfig);
                 }
             } catch (Exception e) {
-                throw new RuntimeException(String.format("Failed to create topic [%s] to cluster [%s]", topic,
-                        this.rmqClientConfig.clusterName), e);
+                throw new RuntimeException(String.format("Failed to create topic [%s] to cluster [%s]", topic, this.rmqClientConfig.clusterName), e);
             }
         });
-    }
-
-    @Override
-    public CompletableFuture<Void> notifyTopicCreation(String topic, int partitions) {
-        // No-op
-        return CompletableFuture.completedFuture(null);
     }
 
     @Override
@@ -112,13 +100,13 @@ public class RocketMQBenchmarkDriver implements BenchmarkDriver {
             rmqProducer = new DefaultMQProducer("ProducerGroup_" + getRandomString());
             rmqProducer.setNamesrvAddr(this.rmqClientConfig.namesrvAddr);
             rmqProducer.setInstanceName("ProducerInstance" + getRandomString());
-            if (null != this.rmqClientConfig.vipChannelEnabled) {
+            if(null != this.rmqClientConfig.vipChannelEnabled){
                 rmqProducer.setVipChannelEnabled(this.rmqClientConfig.vipChannelEnabled);
             }
-            if (null != this.rmqClientConfig.maxMessageSize) {
+            if(null != this.rmqClientConfig.maxMessageSize){
                 rmqProducer.setMaxMessageSize(this.rmqClientConfig.maxMessageSize);
             }
-            if (null != this.rmqClientConfig.compressMsgBodyOverHowmuch) {
+            if(null != this.rmqClientConfig.compressMsgBodyOverHowmuch){
                 rmqProducer.setCompressMsgBodyOverHowmuch(this.rmqClientConfig.compressMsgBodyOverHowmuch);
             }
             try {
@@ -133,19 +121,18 @@ public class RocketMQBenchmarkDriver implements BenchmarkDriver {
 
     @Override
     public CompletableFuture<BenchmarkConsumer> createConsumer(final String topic, final String subscriptionName,
-            Optional<Integer> partition, final ConsumerCallback consumerCallback) {
+        final ConsumerCallback consumerCallback) {
         DefaultMQPushConsumer rmqConsumer = new DefaultMQPushConsumer(subscriptionName);
         rmqConsumer.setNamesrvAddr(this.rmqClientConfig.namesrvAddr);
         rmqConsumer.setInstanceName("ConsumerInstance" + getRandomString());
-        if (null != this.rmqClientConfig.vipChannelEnabled) {
+        if(null != this.rmqClientConfig.vipChannelEnabled){
             rmqConsumer.setVipChannelEnabled(this.rmqClientConfig.vipChannelEnabled);
         }
         try {
             rmqConsumer.subscribe(topic, "*");
             rmqConsumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
                 for (MessageExt message : msgs) {
-                    consumerCallback.messageReceived(message.getBody(),
-                            TimeUnit.MILLISECONDS.toNanos(message.getBornTimestamp()));
+                    consumerCallback.messageReceived(message.getBody(), message.getBornTimestamp());
                 }
                 return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
             });
@@ -166,7 +153,7 @@ public class RocketMQBenchmarkDriver implements BenchmarkDriver {
     }
 
     private static final ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private static RocketMQClientConfig readConfig(File configurationFile) throws IOException {
         return mapper.readValue(configurationFile, RocketMQClientConfig.class);

@@ -20,7 +20,6 @@ package io.openmessaging.benchmark.driver.artemis;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
 
@@ -58,7 +57,7 @@ public class ArtemisBenchmarkDriver implements BenchmarkDriver {
         try {
             ServerLocator serverLocator = ActiveMQClient.createServerLocator(config.brokerAddress);
             serverLocator.setConfirmationWindowSize(1000);
-
+            
             sessionFactory = serverLocator.createSessionFactory();
             session = sessionFactory.createSession();
         } catch (Exception e) {
@@ -92,12 +91,6 @@ public class ArtemisBenchmarkDriver implements BenchmarkDriver {
     }
 
     @Override
-    public CompletableFuture<Void> notifyTopicCreation(String topic, int partitions) {
-        // No-op
-        return CompletableFuture.completedFuture(null);
-    }
-
-    @Override
     public CompletableFuture<BenchmarkProducer> createProducer(String topic) {
         try {
             return CompletableFuture.completedFuture(new ArtemisBenchmarkProducer(topic, sessionFactory));
@@ -110,7 +103,7 @@ public class ArtemisBenchmarkDriver implements BenchmarkDriver {
 
     @Override
     public CompletableFuture<BenchmarkConsumer> createConsumer(String topic, String subscriptionName,
-                                                               Optional<Integer> partition, ConsumerCallback consumerCallback) {
+            ConsumerCallback consumerCallback) {
         CompletableFuture<BenchmarkConsumer> future = new CompletableFuture<>();
         ForkJoinPool.commonPool().submit(() -> {
             try {

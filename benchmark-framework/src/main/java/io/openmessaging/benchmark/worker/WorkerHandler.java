@@ -27,7 +27,6 @@ import org.apache.bookkeeper.stats.StatsLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
@@ -52,7 +51,6 @@ public class WorkerHandler {
 
         app.post("/initialize-driver", this::handleInitializeDriver);
         app.post("/create-topics", this::handleCreateTopics);
-        app.post("/notify-topic-creation", this::handleNotifyTopicCreation);
         app.post("/create-producers", this::handleCreateProducers);
         app.post("/probe-producers", this::handleProbeProducers);
         app.post("/create-consumers", this::handleCreateConsumers);
@@ -87,19 +85,12 @@ public class WorkerHandler {
     private void handleCreateTopics(Context ctx) throws Exception {
         TopicsInfo topicsInfo = mapper.readValue(ctx.body(), TopicsInfo.class);
         log.info("Received create topics request for topics: {}", ctx.body());
-        List<Topic> topics = localWorker.createTopics(topicsInfo);
+        List<String> topics = localWorker.createTopics(topicsInfo);
         ctx.result(writer.writeValueAsString(topics));
     }
 
-    private void handleNotifyTopicCreation(Context ctx) throws Exception {
-        List<Topic> topics = mapper.readValue(ctx.body(), new TypeReference<List<Topic>>() {
-        });
-        log.info("Received notify topic creation request for topics: {}", ctx.body());
-        localWorker.notifyTopicCreation(topics);
-    }
-
     private void handleCreateProducers(Context ctx) throws Exception {
-        List<String> topics = mapper.readValue(ctx.body(), List.class);
+        List<String> topics = (List<String>) mapper.readValue(ctx.body(), List.class);
         log.info("Received create producers request for topics: {}", topics);
         localWorker.createProducers(topics);
     }
@@ -135,7 +126,7 @@ public class WorkerHandler {
         ProducerWorkAssignment producerWorkAssignment = mapper.readValue(ctx.body(), ProducerWorkAssignment.class);
 
         log.info("Start load publish-rate: {} msg/s -- payload-size: {}", producerWorkAssignment.publishRate,
-                producerWorkAssignment.payloadData.length);
+                producerWorkAssignment.payloadData.get(0).length);
 
         localWorker.startLoad(producerWorkAssignment);
     }

@@ -18,19 +18,12 @@
  */
 package io.openmessaging.benchmark.driver.rabbitmq;
 
-import com.rabbitmq.client.BuiltinExchangeType;
+import java.util.ArrayList;
+import java.util.List;
 
 public class RabbitMqConfig {
-    public enum QueueType {
-        CLASSIC, QUORUM
-    }
 
-    public String[] brokers;
+    public List<String> amqpUris = new ArrayList<>();
+
     public boolean messagePersistence = false;
-    public QueueType queueType = QueueType.CLASSIC;
-    public int routingKeyLength = 7;
-    public String topicPrefix = "test-topic";
-    public BuiltinExchangeType exchangeType = BuiltinExchangeType.DIRECT;
-    public boolean exclusive = false;
-    public boolean singleNode = false;
 }

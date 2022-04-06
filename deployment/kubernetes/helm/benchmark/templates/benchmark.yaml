@@ -29,11 +29,18 @@ spec:
     - name: {{ .Release.Name }}-driver
       imagePullPolicy: {{ .Values.imagePullPolicy }}
       image: {{ .Values.image }}
+      resources:
+        limits:
+          memory: {{ .Values.driverMemoryLimit }}
+        requests:
+          memory: {{ .Values.driverMemoryRequest }}
       env:
         - name: NUM_WORKERS
           value: "{{ .Values.numWorkers }}"
         - name: WORKERS
           value: '{{ template "workers" .Values }}'
+        - name: HEAP_OPTS
+          value: '-Xms4G -Xmx4G'
       command: ["sh", "-c"]
       args:
         - >

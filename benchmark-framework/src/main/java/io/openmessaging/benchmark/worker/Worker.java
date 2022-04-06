@@ -34,10 +34,7 @@ public interface Worker extends AutoCloseable {
 
     void initializeDriver(File configurationFile) throws IOException;
 
-    List<Topic> createTopics(TopicsInfo topicsInfo) throws IOException;
-
-    // Let other workers know when a new topic(s) is created
-    void notifyTopicCreation(List<Topic> topics) throws IOException;
+    List<String> createTopics(TopicsInfo topicsInfo) throws IOException;
 
     void createProducers(List<String> topics) throws IOException;
 

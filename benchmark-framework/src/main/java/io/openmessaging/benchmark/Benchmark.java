@@ -46,11 +46,14 @@ public class Benchmark {
 
     static class Arguments {
 
+        @Parameter(names = {"-c", "--csv"}, description = "Print results from this directory to a csv file")
+        String resultsDir;
+
         @Parameter(names = { "-h", "--help" }, description = "Help message", help = true)
         boolean help;
 
         @Parameter(names = { "-d",
-                "--drivers" }, description = "Drivers list. eg.: pulsar/pulsar.yaml,kafka/kafka.yaml", required = true)
+                "--drivers" }, description = "Drivers list. eg.: pulsar/pulsar.yaml,kafka/kafka.yaml")//, required = true)
         public List<String> drivers;
 
         @Parameter(names = { "-w",
@@ -61,7 +64,10 @@ public class Benchmark {
                 "--workers-file" }, description = "Path to a YAML file containing the list of workers addresses")
         public File workersFile;
 
-        @Parameter(description = "Workloads", required = true)
+        @Parameter(names = { "-x", "--extra" }, description = "Allocate extra consumer workers when your backlog builds.")
+        boolean extraConsumers;
+
+        @Parameter(description = "Workloads")//, required = true)
         public List<String> workloads;
 
         @Parameter(names = { "-o", "--output" }, description = "Output", required = false)
@@ -84,6 +90,12 @@ public class Benchmark {
         if (arguments.help) {
             jc.usage();
             System.exit(-1);
+        }
+
+        if(arguments.resultsDir != null) {
+            ResultsToCsv r = new ResultsToCsv();
+            r.writeAllResultFiles(arguments.resultsDir);
+            System.exit(0);
         }
 
         if (arguments.workers != null && arguments.workersFile != null) {
@@ -120,7 +132,7 @@ public class Benchmark {
         Worker worker;
 
         if (arguments.workers != null && !arguments.workers.isEmpty()) {
-            worker = new DistributedWorkersEnsemble(arguments.workers);
+            worker = new DistributedWorkersEnsemble(arguments.workers, arguments.extraConsumers);
         } else {
             // Use local worker implementation
             worker = new LocalWorker();
@@ -152,9 +164,10 @@ public class Benchmark {
 
                     TestResult result = generator.run();
 
-                    String fileName = arguments.output.length() > 0 ? arguments.output
-                            : String.format("%s-%s-%s.json", workloadName, driverConfiguration.name,
-                                    dateFormat.format(new Date()));
+                    boolean useOutput = (arguments.output != null) && (arguments.output.length() > 0);
+
+                    String fileName = useOutput? arguments.output: String.format("%s-%s-%s.json", workloadName,
+                    driverConfiguration.name, dateFormat.format(new Date()));
 
                     log.info("Writing test result into {}", fileName);
                     writer.writeValue(new File(fileName), result);

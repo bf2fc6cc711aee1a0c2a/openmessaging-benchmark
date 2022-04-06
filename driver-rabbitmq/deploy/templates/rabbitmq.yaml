@@ -17,17 +17,14 @@
 # under the License.
 #
 
+
 name: RabbitMQ
 driverClass: io.openmessaging.benchmark.driver.rabbitmq.RabbitMqBenchmarkDriver
 
 # RabbitMq client specific configurations
-brokers:
-{% for worker in groups['rabbitmq'] %}
-  - {{ hostvars[worker].private_ip }}
+
+amqpUris:
+{% for pulsar in groups['rabbitmq'] %}
+  - amqp://admin:admin@{{ hostvars[pulsar].private_ip }}:5672
 {% endfor %}
-messagePersistence: true
-queueType: CLASSIC # CLASSIC | QUORUM
-exchangeType: DIRECT # DIRECT | TOPIC | FANOUT | HEADERS
-topicPrefix: summit
-exclusive: false # Turn off for HA/durability to take effect
-singleNode: false # Turn on to use a single node for all queues/exchanges for all producers/consumers
+messagePersistence: false

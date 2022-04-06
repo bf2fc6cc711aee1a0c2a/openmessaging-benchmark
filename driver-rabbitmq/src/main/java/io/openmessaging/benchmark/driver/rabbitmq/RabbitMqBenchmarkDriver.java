@@ -18,216 +18,120 @@
  */
 package io.openmessaging.benchmark.driver.rabbitmq;
 
+import com.rabbitmq.client.AlreadyClosedException;
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.net.URI;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.google.common.io.BaseEncoding;
 import com.rabbitmq.client.BuiltinExchangeType;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 
+import io.netty.handler.codec.http.QueryStringDecoder;
 import io.openmessaging.benchmark.driver.BenchmarkConsumer;
 import io.openmessaging.benchmark.driver.BenchmarkDriver;
 import io.openmessaging.benchmark.driver.BenchmarkProducer;
 import io.openmessaging.benchmark.driver.ConsumerCallback;
-import io.openmessaging.benchmark.driver.rabbitmq.RabbitMqConfig.QueueType;
-
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// Based on the KeyDistributor from the framework
-// Generates routing keys to "channel" messages to specific queues
-// Common to all producers for a workload
-class RoutingKeyGenerator {
-    private AtomicInteger idx = new AtomicInteger(0);
-    private final int KEY_COUNT;
-    private final String[] keys;
-
-    RoutingKeyGenerator(int partitions, int keyLength) {
-        KEY_COUNT = partitions;
-        keys = new String[KEY_COUNT];
-
-        // byte[] buffer = new byte[keyLength];
-        // Random random = new Random();
-        // for (int i = 0; i < keys.length; i++) {
-        // random.nextBytes(buffer);
-        // keys[i] = BaseEncoding.base64Url().omitPadding().encode(buffer);
-        // }
-
-        // Repeatable routing keys - Partition Number as string
-        // When run on workers hosted on different physical machines/processes
-        // consumers need to listen to the same routing keys as producers
-        // TODO: Pass list of routing keys along w/ topics to consumer
-        for (int i = 0; i < partitions; i++) {
-            keys[i] = String.valueOf(i);
-        }
-    }
-
-    public String next() {
-        return keys[idx.getAndIncrement() % KEY_COUNT];
-    }
-}
-
-class ConnectionManager {
-    private List<ConnectionFactory> connectionFactory = new ArrayList<>();
-    private List<Connection> connections = new ArrayList<>();
-    private AtomicInteger idx = new AtomicInteger(0);
-
-    ConnectionManager(String[] brokers) {
-        for (String broker : brokers) {
-            ConnectionFactory factory = new ConnectionFactory();
-            factory.setAutomaticRecoveryEnabled(true);
-            factory.setHost(broker);
-            factory.setUsername("admin");
-            factory.setPassword("admin");
-            connectionFactory.add(factory);
-        }
-    }
-
-    // Round robins across all brokers
-    public Connection connectAny() throws IOException, TimeoutException {
-        Connection connection = connectionFactory.get(idx.getAndIncrement() % connectionFactory.size()).newConnection();
-        connections.add(connection);
-
-        return connection;
-    }
-
-    public Connection connect(int brokerIdx) throws IOException, TimeoutException, IllegalArgumentException {
-        if (brokerIdx > connectionFactory.size()) {
-            throw new IllegalArgumentException("Broker index > total no of brokers");
-        }
-        Connection connection = connectionFactory.get(brokerIdx).newConnection();
-        connections.add(connection);
-
-        return connection;
-    }
-
-    public void close() {
-        connections.forEach(connection -> {
-            try {
-                connection.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        });
-    }
-}
-
 public class RabbitMqBenchmarkDriver implements BenchmarkDriver {
 
     private RabbitMqConfig config;
-
-    private ConnectionManager connectionManager;
-
-    private Map<String, RoutingKeyGenerator> topicRoutingKeyGenerator = new HashMap<>();
-
-    private int routingKeyLength;
-
-    private static final Logger log = LoggerFactory.getLogger(RabbitMqBenchmarkDriver.class);
-
-    public static final String TIMESTAMP_HEADER = "timestamp";
+    private final AtomicInteger uriIndex = new AtomicInteger();
+    private final Map<String, Connection> connections = new ConcurrentHashMap<>();
 
     @Override
     public void initialize(File configurationFile, StatsLogger statsLogger) throws IOException {
         config = mapper.readValue(configurationFile, RabbitMqConfig.class);
-        connectionManager = new ConnectionManager(config.brokers);
-        routingKeyLength = config.routingKeyLength;
     }
 
     @Override
-    public void close() throws Exception {
-        connectionManager.close();
+    public void close() {
+        for(Iterator<Map.Entry<String, Connection>> it = connections.entrySet().iterator(); it.hasNext(); ) {
+            Connection connection = it.next().getValue();
+            try {
+                connection.close();
+            } catch (AlreadyClosedException e) {
+                log.warn("Connection already closed", e);
+            } catch (Exception e) {
+                log.error("Couldn't close connection", e);
+            }
+            it.remove();
+        }
+
     }
 
     @Override
     public String getTopicNamePrefix() {
-        return config.topicPrefix;
+        // Do a round-robin on AMQP URIs
+        URI configUri = URI.create(config.amqpUris.get(uriIndex.getAndIncrement() % config.amqpUris.size()));
+        URI topicUri = configUri.resolve(configUri.getRawPath() + "?exchange=test-exchange");
+        return topicUri.toString();
     }
 
     @Override
     public CompletableFuture<Void> createTopic(String topic, int partitions) {
-        CompletableFuture<BenchmarkProducer> future = new CompletableFuture<>();
-
-        try {
-            Connection connection = config.singleNode ? connectionManager.connect(0) : connectionManager.connectAny();
-            Channel channel = connection.createChannel();
-            channel.exchangeDeclare(topic, config.exchangeType, config.messagePersistence);
-        } catch (IOException | TimeoutException | IllegalArgumentException e) {
-            e.printStackTrace();
-            future.completeExceptionally(e);
+        if (partitions != 1) {
+            throw new IllegalArgumentException("Cannot create topic with partitions in RabbitMQ");
         }
 
-        if (!topicRoutingKeyGenerator.containsKey(topic)) {
-            topicRoutingKeyGenerator.put(topic, new RoutingKeyGenerator(partitions, routingKeyLength));
-        }
-        return CompletableFuture.completedFuture(null);
-    }
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        future.complete(null);
 
-    @Override
-    public CompletableFuture<Void> notifyTopicCreation(String topic, int partitions) {
-        if (!topicRoutingKeyGenerator.containsKey(topic)) {
-            topicRoutingKeyGenerator.put(topic, new RoutingKeyGenerator(partitions, routingKeyLength));
-        }
-        return CompletableFuture.completedFuture(null);
+        return future;
     }
 
     @Override
     public CompletableFuture<BenchmarkProducer> createProducer(String topic) {
         CompletableFuture<BenchmarkProducer> future = new CompletableFuture<>();
-
-        try {
-            Connection connection = config.singleNode ? connectionManager.connect(0) : connectionManager.connectAny();
-            Channel channel = connection.createChannel();
-            channel.confirmSelect();
-            future = CompletableFuture.completedFuture(new RabbitMqBenchmarkProducer(channel, topic,
-                    config.messagePersistence, topicRoutingKeyGenerator.get(topic)));
-        } catch (IOException | TimeoutException | IllegalArgumentException e) {
-            e.printStackTrace();
-            future.completeExceptionally(e);
-        }
+        ForkJoinPool.commonPool().execute(() -> {
+            try {
+                String uri = topic.split("\\?")[0];
+                Connection connection = getOrCreateConnection(uri);
+                Channel channel = connection.createChannel();
+                String exchange = getExchangeName(topic);
+                channel.exchangeDeclare(exchange, BuiltinExchangeType.FANOUT, true);
+                channel.confirmSelect();
+                future.complete(new RabbitMqBenchmarkProducer(channel, exchange, config.messagePersistence));
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
         return future;
     }
 
     @Override
     public CompletableFuture<BenchmarkConsumer> createConsumer(String topic, String subscriptionName,
-            Optional<Integer> partition, ConsumerCallback consumerCallback) {
+            ConsumerCallback consumerCallback) {
 
         CompletableFuture<BenchmarkConsumer> future = new CompletableFuture<>();
         ForkJoinPool.commonPool().execute(() -> {
             try {
-                String queueName = topic + "-" + subscriptionName;
-                Connection connection = config.singleNode ? connectionManager.connect(0)
-                        : connectionManager.connectAny();
+                String uri = topic.split("\\?")[0];
+                Connection connection = getOrCreateConnection(uri);
                 Channel channel = connection.createChannel();
-                channel.exchangeDeclare(topic, config.exchangeType, config.messagePersistence);
-
-                Map<String, Object> args = new HashMap<>();
-                args.put("x-queue-type", config.queueType.toString().toLowerCase());
-                String routingKey = "";
-                if (config.exchangeType == BuiltinExchangeType.TOPIC) {
-                    // Bind to all, if topic-based exchange
-                    routingKey = "#";
-                } else if (config.exchangeType == BuiltinExchangeType.DIRECT) {
-                    if (partition.isPresent()) {
-                        routingKey = partition.get().toString();
-                    }
-                    queueName += ("-part-" + routingKey);
-                }
-                channel.queueDeclare(queueName, config.messagePersistence, config.exclusive, false, args);
-                channel.queueBind(queueName, topic, routingKey);
-                log.info("Bound queue -> {} to exchange -> {}", queueName, topic);
+                String exchange = getExchangeName(topic);
+                String queueName = exchange + "-" + subscriptionName;
+                channel.exchangeDeclare(exchange, BuiltinExchangeType.FANOUT, true);
+                // Create the queue
+                channel.queueDeclare(queueName, true, false, false, Collections.emptyMap());
+                channel.queueBind(queueName, exchange, "");
                 future.complete(new RabbitMqBenchmarkConsumer(channel, queueName, consumerCallback));
-            } catch (IOException | TimeoutException | IllegalArgumentException e) {
+            } catch (IOException e) {
                 future.completeExceptionally(e);
             }
         });
@@ -235,6 +139,31 @@ public class RabbitMqBenchmarkDriver implements BenchmarkDriver {
         return future;
     }
 
+    private String getExchangeName(String uri) {
+        QueryStringDecoder decoder = new QueryStringDecoder(uri);
+        Map<String, List<String>> parameters = decoder.parameters();
+
+        if(!parameters.containsKey("exchange")) {
+            throw new IllegalArgumentException("Missing exchange param");
+        }
+        return parameters.get("exchange").get(0);
+    }
+
+    private Connection getOrCreateConnection(String uri) {
+        return connections.computeIfAbsent(uri, uriKey -> {
+            try {
+                ConnectionFactory connectionFactory = new ConnectionFactory();
+                connectionFactory.setAutomaticRecoveryEnabled(true);
+                connectionFactory.setUri(uri);
+                return connectionFactory.newConnection();
+            } catch (Exception e) {
+                throw new RuntimeException("Couldn't establish connection", e);
+            }
+        });
+    }
+
     private static final ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    private static final Logger log = LoggerFactory.getLogger(RabbitMqBenchmarkDriver.class);
 }

@@ -17,9 +17,7 @@
 # under the License.
 #
 
----
-# Mount SSDs
-- name: Format and mount disks for Brokers
+- name: Format and mount disks for RabbitMQ hosts
   hosts: rabbitmq
   connection: ssh
   become: true
@@ -27,10 +25,9 @@
     - name: Format disks
       filesystem:
         fstype: xfs
-        dev: "{{ item }}"
+        dev: '{{ item }}'
       with_items:
-        - "/dev/nvme1n1"
-        - "/dev/nvme2n1"
+        - '/dev/nvme1n1'
     - name: Mount disks
       mount:
         path: "{{ item.path }}"
@@ -39,13 +36,103 @@
         opts: defaults,noatime,nodiscard
         state: mounted
       with_items:
-        - { path: "/mnt/data-1", src: "/dev/nvme1n1" }
-        - { path: "/mnt/data-2", src: "/dev/nvme2n1" }
-    - name: Fix permissions
+        - { path: "/mnt/data", src: "/dev/nvme1n1" }
+    - name: Set permissions
       file:
-        path: "/mnt/data-1"
+        path: "/mnt/data"
         state: touch
         mode: "0777"
+
+- name: Install RabbitMQ Cluster
+  hosts: rabbitmq
+  connection: ssh
+  tasks:
+  - set_fact:
+      erlangVersion: 23.3.4.10
+      rabbitMqVersion: 3.9.11
+  - name: Install RPM packages
+    yum: pkg={{ item }} state=latest
+    with_items:
+      - wget
+      - sysstat
+      - vim
+      - socat
+  - name: Install Erlang
+    yum:
+      name: https://github.com/rabbitmq/erlang-rpm/releases/download/v{{ erlangVersion }}/erlang-{{ erlangVersion }}-1.el7.x86_64.rpm
+      state: present
+  - name: Install Rabbitmq Server
+    yum:
+      name: https://github.com/rabbitmq/rabbitmq-server/releases/download/v{{ rabbitMqVersion }}/rabbitmq-server-{{ rabbitMqVersion }}-1.el7.noarch.rpm
+      state: present
+
+  - name: Create rabbitmq-env.conf file
+    template:
+      src: "templates/rabbitmq-env.conf"
+      dest: "/etc/rabbitmq/rabbitmq-env.conf"
+
+  - systemd:
+      state: started
+      daemon_reload: yes
+      name: "rabbitmq-server"
+
+  - name: Install web management
+    shell: rabbitmq-plugins enable rabbitmq_management
+  - systemd:
+      state: restarted
+      daemon_reload: yes
+      name: "rabbitmq-server"
+
+  - name: Clear servers' Erlang cookie
+    file:
+      path: /var/lib/rabbitmq/.erlang.cookie
+      state: absent
+  - name: Copy Erlang cookie
+    copy: src=erlang.cookie  dest=/var/lib/rabbitmq/.erlang.cookie  owner=rabbitmq group=rabbitmq mode=0400
+  - systemd:
+      state: restarted
+      daemon_reload: yes
+      name: "rabbitmq-server"
+
+  - name: RabbitMQ status
+    shell: rabbitmqctl cluster_status
+    register: result
+  - debug:
+      msg: '{{ result.stdout }}'
+
+  - name: Rabbit cluster stop slaves
+    shell: rabbitmqctl stop_app
+    when: inventory_hostname != hostvars[groups['rabbitmq'][0]].inventory_hostname
+
+  - name: Rabbit cluster slaves join master
+    shell: rabbitmqctl join_cluster rabbit@{{ hostvars[groups['rabbitmq'][0]].private_ip }}
+    when: inventory_hostname != hostvars[groups['rabbitmq'][0]].inventory_hostname
+
+  - name: Start RabbitMQ cluster slaves
+    shell: rabbitmqctl start_app
+    when: inventory_hostname != hostvars[groups['rabbitmq'][0]].inventory_hostname
+
+  - name: Show RabbitMQ cluster status
+    shell: rabbitmqctl cluster_status
+    register: result
+  - debug:
+      msg: '{{ result.stdout }}'
+
+  - name: create admin/admin profile
+    shell:  rabbitmqctl add_user admin  admin
+    when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
+
+  - name: set admin tag
+    shell: rabbitmqctl set_user_tags admin administrator
+    when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
+
+  - name: set admin permission
+    shell: rabbitmqctl set_permissions -p "/" admin ".*" ".*" ".*"
+    when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
+
+  - name: Create high availability policy
+    shell: rabbitmqctl set_policy ha-all "^" '{"ha-mode":"exactly","ha-params":2,"ha-sync-mode":"automatic"}'
+    when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
 
 - name: Chrony setup
   hosts: client
@@ -61,145 +148,6 @@
         daemon_reload: yes
         name: "chronyd"
 
-# Install RabbitMQ Server
-- name: Install RabbitMQ Cluster
-  hosts: rabbitmq
-  connection: ssh
-  handlers:
-    - name: restart rabbitmq-server
-      service: name=rabbitmq-server state=restarted
-
-    - name: start rabbitmq-server
-      service: name=rabbitmq-server state=started
-
-    - name: stop rabbitmq-server
-      service: name=rabbitmq-server state=stopped
-  tasks:
-    - set_fact:
-        erlangVersion: 23.0.2
-        rabbitMqVersion: 3.8.5
-    - name: Install RPM packages
-      yum: pkg={{ item }} state=latest
-      with_items:
-        - wget
-        - java-11
-        - sysstat
-        - vim
-        - socat
-    - name: Install Erlang
-      yum:
-        name: https://github.com/rabbitmq/erlang-rpm/releases/download/v{{ erlangVersion }}/erlang-{{ erlangVersion }}-1.el7.x86_64.rpm
-        state: present
-    - name: Install Rabbitmq Server
-      yum:
-        name: https://dl.bintray.com/rabbitmq/all/rabbitmq-server/{{ rabbitMqVersion }}/rabbitmq-server-{{ rabbitMqVersion }}-1.el7.noarch.rpm
-        state: present
-    - name: Install RabbitMQ service
-      template:
-        src: "templates/rabbitmq-server.service"
-        dest: "/etc/systemd/system/rabbitmq-server.service"
-    - systemd:
-        state: started
-        daemon_reload: yes
-        name: "rabbitmq-server"
-    - systemd:
-        state: restarted
-        daemon_reload: yes
-        name: "rabbitmq-server"
-
-    - name: backup old erlang cookie
-      shell: cp -a /var/lib/rabbitmq/.erlang.cookie /var/lib/rabbitmq/.erlang.cookie.old
-      changed_when: false
-    - name: updating rabbitmq erlang cookie
-      template:
-        src: etc/erlang.cookie.j2
-        dest: /var/lib/rabbitmq/.erlang.cookie
-        owner: rabbitmq
-        group: rabbitmq
-        mode: 0400
-      notify: stop rabbitmq-server
-    - name: remove old erlang cookie
-      file:
-        path: /var/lib/rabbitmq/.erlang.cookie.old
-        state: absent
-      changed_when: false
-    - name: rabbitmq default file
-      template:
-        src: "{{ item.src }}"
-        dest: "{{ item.dest }}"
-        owner: root
-        group: root
-        mode: 0644
-      with_items:
-        - {
-            src: etc/default/rabbitmq-server.j2,
-            dest: /etc/default/rabbitmq-server,
-          }
-        - {
-            src: etc/rabbitmq/rabbitmq.config.j2,
-            dest: /etc/rabbitmq/rabbitmq.config,
-          }
-        - {
-            src: etc/rabbitmq/rabbitmq-env.conf.j2,
-            dest: /etc/rabbitmq/rabbitmq-env.conf,
-          }
-      notify: restart rabbitmq-server
-    - systemd:
-        state: started
-        daemon_reload: yes
-        name: "rabbitmq-server"
-
-# Configure RabbitMQ for cluster
-- name: Configure RabbitMQ for cluster
-  hosts: rabbitmq
-  connection: ssh
-  handlers:
-    - name: restart rabbitmq-server
-      service: name=rabbitmq-server state=restarted
-
-    - name: start rabbitmq-server
-      service: name=rabbitmq-server state=started
-
-    - name: stop rabbitmq-server
-      service: name=rabbitmq-server state=stopped
-  tasks:
-    - name: Enable the plugins installed
-      rabbitmq_plugin:
-        names: "{{ item }}"
-        prefix: /usr/lib/rabbitmq
-        state: enabled
-        new_only: yes
-      with_items: "{{ rabbitmq_plugins }}"
-      notify: start rabbitmq-server
-
-    - name: Restart RabbitMQ server
-      systemd:
-        state: started
-        name: "rabbitmq-server"
-
-    - name: make sure rabbitmq app is up
-      command: rabbitmqctl start_app
-
-    - name: Join first node's cluster
-      shell: rabbitmqctl stop_app && rabbitmqctl join_cluster rabbit@{{ hostvars[groups['rabbitmq'][0]].private_ip }} && rabbitmqctl start_app
-      when: inventory_hostname != hostvars[groups['rabbitmq'][0]].inventory_hostname
-
-    - name: create admin/admin  profile
-      shell: rabbitmqctl add_user admin  admin
-      when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
-    - name: set admin tag
-      shell: rabbitmqctl set_user_tags admin administrator
-      when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
-    - name: set admin permission
-      shell: rabbitmqctl set_permissions -p "/" admin ".*" ".*" ".*"
-      when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
-
-    - name: set ha-mode to exactly two nodes for all queues for backup
-      shell: rabbitmqctl set_policy ha-exactly-two ".*" '{"ha-mode":"exactly","ha-params":2,"ha-sync-mode":"automatic"}'
-      register: res
-      failed_when: res.rc != 0
-      when: inventory_hostname == hostvars[groups['rabbitmq'][0]].inventory_hostname
-
 - name: Rabbitmq benchmarking client setup
   hosts: client
   connection: ssh
@@ -209,29 +157,37 @@
       yum: pkg={{ item }} state=latest
       with_items:
         - wget
-        - java-11
+        - java-11-openjdk
+        - java-11-openjdk-devel
         - sysstat
         - vim
-        - socat
     - name: Copy benchmark code
       unarchive:
         src: ../../package/target/openmessaging-benchmark-0.0.1-SNAPSHOT-bin.tar.gz
         dest: /opt
     - shell: >
-        tuned-adm profile latency-performance && rm -rf /opt/benchmark &&
+        tuned-adm profile latency-performance &&
         mv /opt/openmessaging-benchmark-0.0.1-SNAPSHOT /opt/benchmark
-    - name: Configure benchmark JVM settings
-      lineinfile:
-        dest: /opt/benchmark/bin/benchmark
-        regexp: "^JVM_MEM="
-        line: 'JVM_MEM="-Xms24G -Xmx24G -XX:+UseG1GC -XX:MaxGCPauseMillis=10 -XX:+ParallelRefProcEnabled -XX:+UnlockExperimentalVMOptions -XX:+AggressiveOpts -XX:+DoEscapeAnalysis -XX:ParallelGCThreads=32 -XX:ConcGCThreads=32 -XX:G1NewSizePercent=50 -XX:+DisableExplicitGC -XX:-ResizePLAB -XX:+PerfDisableSharedMem -XX:+AlwaysPreTouch -XX:-UseBiasedLocking"'
+
     - template:
         src: "templates/workers.yaml"
         dest: "/opt/benchmark/workers.yaml"
+
     - template:
         src: "templates/rabbitmq.yaml"
         dest: "/opt/benchmark/driver-rabbitmq/rabbitmq.yaml"
-    - name: Install benchmark systemd service
+
+    - name: Configure benchmark-worker memory
+      lineinfile:
+        dest: /opt/benchmark/bin/benchmark-worker
+        regexp: '^JVM_MEM='
+        line: 'JVM_MEM="-Xms100G -Xmx100G -XX:+UnlockExperimentalVMOptions -XX:+UseZGC -XX:+ParallelRefProcEnabled -XX:+AggressiveOpts -XX:+DoEscapeAnalysis -XX:ParallelGCThreads=12 -XX:ConcGCThreads=12 -XX:+DisableExplicitGC -XX:-ResizePLAB"'
+    - name: Configure benchmark memory
+      lineinfile:
+        dest: /opt/benchmark/bin/benchmark
+        regexp: '^JVM_MEM='
+        line: 'JVM_MEM="-Xmx4G"'
+    - name: Install benchmark-worker systemd service
       template:
         src: "templates/benchmark-worker.service"
         dest: "/etc/systemd/system/benchmark-worker.service"
@@ -250,111 +206,4 @@
     - debug:
         msg: "Benchmark client {{ item }}"
       with_items: "{{ groups['client'] }}"
-
-# Setup the Prometheus/Grafana monitoring stack
-- name: Prometheus installation
-  hosts: prometheus
-  connection: ssh
-  become: true
-  tasks:
-    - name: Add Extras Repo
-      shell: yum-config-manager --enable rhui-REGION-rhel-server-extras
-    - name: Install RPM packages
-      yum: pkg={{ item }} state=latest
-      with_items:
-        - docker
-    - set_fact:
-        prometheusVersion: "2.2.1"
-    - file: path=/opt/prometheus state=absent
-    - file: path=/opt/prometheus state=directory
-    - name: Download Prometheus Binary Package
-      unarchive:
-        src: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheusVersion }}/prometheus-{{ prometheusVersion }}.linux-amd64.tar.gz"
-        remote_src: yes
-        dest: /opt/prometheus
-        extra_opts: ["--strip-components=1"]
-    - set_fact:
-        private_ip: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
-
-- name: Prometheus setup
-  hosts: prometheus
-  connection: ssh
-  become: true
-  tasks:
-    - file:
-        path: "/opt/prometheus/{{ item }}"
-        state: directory
-      with_items:
-        - data
-    - template:
-        src: "templates/prometheus.service"
-        dest: "/etc/systemd/system/prometheus.service"
-    - template:
-        src: "templates/rabbitmq-dashboard.service"
-        dest: "/etc/systemd/system/rabbitmq-dashboard.service"
-    - template:
-        src: "templates/prometheus.yml"
-        dest: "/opt/prometheus/prometheus.yml"
-    - systemd:
-        state: restarted
-        daemon_reload: yes
-        name: "rabbitmq-dashboard"
-
-- name: Install Node exporter on Brokers to collect system metrics
-  hosts: rabbitmq
-  become: true
-  tasks:
-    - name: Add user node_exporter
-      user:
-        name: node_exporter
-        shell: /bin/false
-        system: true
-        create_home: no
-
-    - name: Download and extract
-      unarchive:
-        src: https://github.com/prometheus/node_exporter/releases/download/v1.0.1/node_exporter-1.0.1.linux-amd64.tar.gz
-        dest: /tmp
-        remote_src: yes
-
-    - name: Copy bin node_exporter to /usr/local/bin
-      copy:
-        src: /tmp/node_exporter-1.0.1.linux-amd64/node_exporter
-        remote_src: yes
-        dest: /usr/local/bin/
-        owner: node_exporter
-        group: node_exporter
-        mode: u+x,g+x,o+x
-
-    - name: Create service node_exporter.service
-      blockinfile:
-        path: /etc/systemd/system/node_exporter.service
-        block: |
-          [Unit]
-          Description=Prometheus Node Exporter
-          Wants=network-online.target
-          After=network-online.target
-          [Service]
-          User=node_exporter
-          Group=node_exporter
-          Type=simple
-          ExecStart=/usr/local/bin/node_exporter
-          [Install]
-          WantedBy=multi-user.target
-        create: true
-
-    - name: systemctl daemon_reload
-      systemd:
-        daemon_reload: yes
-
-    - name: Start and Enable node_exporter
-      service:
-        name: node_exporter
-        state: started
-        enabled: yes
-
-    - name: Check whether port 9100 is available
-      wait_for:
-        port: 9100
-        state: started
-        timeout: 5
+  

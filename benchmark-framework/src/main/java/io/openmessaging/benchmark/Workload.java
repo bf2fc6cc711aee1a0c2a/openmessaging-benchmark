@@ -33,6 +33,10 @@ public class Workload {
 
     public int messageSize;
 
+    public boolean useRandomizedPayloads;
+    public double randomBytesRatio;
+    public int randomizedPayloadPoolSize;
+
     public String payloadFile;
 
     public int subscriptionsPerTopic;
@@ -43,16 +47,12 @@ public class Workload {
 
     public int producerRate;
 
-    public boolean findSustainableRate;
-    public Double sustainableRateMaxBacklogMs;
-
     /**
-     * If the consumer backlog is > 0, the generator will accumulate messages until
-     * the requested amount of storage is retained and then it will start the
-     * consumers to drain it.
+     * If the consumer backlog is > 0, the generator will accumulate messages until the requested amount of storage is
+     * retained and then it will start the consumers to drain it.
      *
-     * The testDurationMinutes will be overruled to allow the test to complete when
-     * the consumer has drained all the backlog and it's on par with the producer
+     * The testDurationMinutes will be overruled to allow the test to complete when the consumer has drained all the
+     * backlog and it's on par with the producer
      */
     public long consumerBacklogSizeGB = 0;
 

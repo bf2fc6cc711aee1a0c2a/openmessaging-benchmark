@@ -21,24 +21,20 @@ package io.openmessaging.benchmark.worker.commands;
 public class TopicSubscription {
     public String topic;
     public String subscription;
-    public int partition;
 
     public TopicSubscription() {
     }
 
-    public TopicSubscription(String topic, String subscription, int partition) {
+    public TopicSubscription(String topic, String subscription) {
         this.topic = topic;
         this.subscription = subscription;
-        this.partition = partition;
     }
 
     @Override
     public String toString() {
-        final StringBuilder sb = new StringBuilder("TopicSubscription{");
-        sb.append("topic='").append(topic).append('\'');
-        sb.append(", subscription='").append(subscription).append('\'');
-        sb.append(", partition=").append(partition);
-        sb.append('}');
-        return sb.toString();
+        return "TopicSubscription{" +
+            "topic='" + topic + '\'' +
+            ", subscription='" + subscription + '\'' +
+            '}';
     }
 }

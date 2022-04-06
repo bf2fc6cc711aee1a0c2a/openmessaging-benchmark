@@ -31,7 +31,7 @@
 	<artifactId>benchmark-framework</artifactId>
 
 	<properties>
-		<log4j.version>2.13.3</log4j.version>
+		<log4j.version>2.17.1</log4j.version>
 	</properties>
 
 	<dependencies>
@@ -100,7 +100,25 @@
 
 		<dependency>
 			<groupId>${project.groupId}</groupId>
+			<artifactId>driver-jms</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>${project.groupId}</groupId>
 			<artifactId>driver-kafka</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>${project.groupId}</groupId>
+			<artifactId>driver-kop</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>${project.groupId}</groupId>
+			<artifactId>driver-pravega</artifactId>
 			<version>${project.version}</version>
 		</dependency>
 
@@ -147,6 +165,12 @@
 		</dependency>
 
 		<dependency>
+			<groupId>${project.groupId}</groupId>
+			<artifactId>driver-redis</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+
+ 		<dependency>
 			<groupId>org.apache.bookkeeper.stats</groupId>
 			<artifactId>bookkeeper-stats-api</artifactId>
 			<version>${bookkeeper.version}</version>
@@ -174,7 +198,7 @@
 		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-server</artifactId>
-			<version>9.4.17.v20190418</version>
+			<version>9.4.42.v20210604</version>
 		</dependency>
 
 		<dependency>
@@ -187,8 +211,9 @@
 		<dependency>
 			<groupId>org.eclipse.jetty</groupId>
 			<artifactId>jetty-util</artifactId>
-			<version>9.4.8.v20171121</version>
+			<version>9.4.42.v20210604</version>
 		</dependency>
+
 	</dependencies>
 
 	<build>

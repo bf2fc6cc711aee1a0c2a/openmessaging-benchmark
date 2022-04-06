@@ -20,9 +20,10 @@ package io.openmessaging.benchmark.driver.kafka;
 
 import io.openmessaging.benchmark.driver.BenchmarkProducer;
 import io.openmessaging.benchmark.driver.MetricsEnabled;
-
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -33,21 +34,22 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-
 public class KafkaBenchmarkProducer implements BenchmarkProducer, MetricsEnabled {
     private static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkProducer.class);
+
     private final KafkaProducer<String, byte[]> producer;
     private final String topic;
     private String clientId;
     private MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
-    public KafkaBenchmarkProducer(KafkaProducer<String, byte[]> producer, String topic, String clientId) {
+    public KafkaBenchmarkProducer(KafkaProducer<String, byte[]> producer, String topic) {
         this.producer = producer;
         this.topic = topic;
-        this.clientId = clientId;
+    }
+
+    public KafkaBenchmarkProducer clientId(String id) {
+      this.clientId = id;
+      return this;
     }
 
     @Override

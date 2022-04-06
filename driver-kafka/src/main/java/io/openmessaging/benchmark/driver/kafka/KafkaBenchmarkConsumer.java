@@ -18,28 +18,30 @@
  */
 package io.openmessaging.benchmark.driver.kafka;
 
-import java.lang.management.ManagementFactory;
-import java.time.Duration;
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-
 import io.openmessaging.benchmark.driver.BenchmarkConsumer;
 import io.openmessaging.benchmark.driver.ConsumerCallback;
 import io.openmessaging.benchmark.driver.MetricsEnabled;
-
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
+
+import java.lang.management.ManagementFactory;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.TreeMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class KafkaBenchmarkConsumer implements BenchmarkConsumer, MetricsEnabled {
 
@@ -50,32 +52,51 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer, MetricsEnabled
     private final ExecutorService executor;
     private final Future<?> consumerTask;
     private volatile boolean closing = false;
+    private boolean autoCommit;
     private String clientId;
     private MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
-    public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer, ConsumerCallback callback, String clientId) {
+    public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer,
+                                  Properties consumerConfig,
+                                  ConsumerCallback callback) {
+        this(consumer, consumerConfig, callback, 100L);
+    }
+
+    public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer,
+                                  Properties consumerConfig,
+                                  ConsumerCallback callback,
+                                  long pollTimeoutMs) {
         this.consumer = consumer;
         this.executor = Executors.newSingleThreadExecutor();
-        this.clientId = clientId;
-
+        this.autoCommit= Boolean.valueOf((String)consumerConfig.getOrDefault(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,"false"));
         this.consumerTask = this.executor.submit(() -> {
             while (!closing) {
                 try {
-                    ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(100));
+                    ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(pollTimeoutMs));
+
+                    Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
                     for (ConsumerRecord<String, byte[]> record : records) {
-                        callback.messageReceived(record.value(), TimeUnit.MILLISECONDS.toNanos(record.timestamp()));
+                        callback.messageReceived(record.value(), record.timestamp());
+
+                        offsetMap.put(new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset()+1));
                     }
 
-                    if (!records.isEmpty()) {
+                    if (!autoCommit&&!offsetMap.isEmpty()) {
                         // Async commit all messages polled so far
-                        consumer.commitAsync();
+                        consumer.commitAsync(offsetMap, null);
                     }
-                } catch (Exception e) {
+                } catch(Exception e){
                     callback.exception(e);
                     log.error("exception occur while consuming message", e);
                 }
             }
         });
+    }
+
+    public KafkaBenchmarkConsumer clientId(String id) {
+      this.clientId = id;
+      return this;
     }
 
     @Override

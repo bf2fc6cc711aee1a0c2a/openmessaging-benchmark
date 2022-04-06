@@ -25,7 +25,7 @@ client:
   serviceUrl: pulsar://localhost:6650
   httpUrl: http://localhost:8080
   ioThreads: 16
-  connectionsPerBroker: 16
+  connectionsPerBroker: 8
   clusterName: local
   namespacePrefix: benchmark/ns
   topicType: persistent
@@ -45,5 +45,9 @@ client:
 producer:
   batchingEnabled: true
   batchingMaxPublishDelayMs: 1
+  batchingMaxBytes: 131072
   blockIfQueueFull: true
-  pendingQueueSize: 10000
+  pendingQueueSize: 0
+
+consumer:
+  receiverQueueSize: 10000

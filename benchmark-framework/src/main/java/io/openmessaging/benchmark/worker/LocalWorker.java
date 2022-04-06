@@ -22,13 +22,9 @@ import static java.util.stream.Collectors.toList;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,13 +33,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.RateLimiter;
-
 import org.HdrHistogram.Recorder;
 import org.apache.bookkeeper.stats.Counter;
 import org.apache.bookkeeper.stats.NullStatsLogger;
@@ -51,6 +40,13 @@ import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.RateLimiter;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.openmessaging.benchmark.DriverConfiguration;
@@ -62,13 +58,7 @@ import io.openmessaging.benchmark.driver.MetricsEnabled;
 import io.openmessaging.benchmark.utils.RandomGenerator;
 import io.openmessaging.benchmark.utils.Timer;
 import io.openmessaging.benchmark.utils.distributor.KeyDistributor;
-import io.openmessaging.benchmark.worker.commands.ConsumerAssignment;
-import io.openmessaging.benchmark.worker.commands.CountersStats;
-import io.openmessaging.benchmark.worker.commands.CumulativeLatencies;
-import io.openmessaging.benchmark.worker.commands.PeriodStats;
-import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
-import io.openmessaging.benchmark.worker.commands.Stats;
-import io.openmessaging.benchmark.worker.commands.TopicsInfo;
+import io.openmessaging.benchmark.worker.commands.*;
 
 public class LocalWorker implements Worker, ConsumerCallback {
 
@@ -180,36 +170,24 @@ public class LocalWorker implements Worker, ConsumerCallback {
     }
 
     @Override
-    public List<Topic> createTopics(TopicsInfo topicsInfo) {
+    public List<String> createTopics(TopicsInfo topicsInfo) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
 
         Timer timer = new Timer();
 
-        String topicPrefix = benchmarkDriver.getTopicNamePrefix();
 
-        List<Topic> topics = new ArrayList<>();
+        List<String> topics = new ArrayList<>();
         for (int i = 0; i < topicsInfo.numberOfTopics; i++) {
-            Topic topic = new Topic(String.format("%s-%s-%04d", topicPrefix, RandomGenerator.getRandomString(), i),
-                    topicsInfo.numberOfPartitionsPerTopic);
+            String topicPrefix = benchmarkDriver.getTopicNamePrefix();
+            String topic = String.format("%s-%s-%04d", topicPrefix, RandomGenerator.getRandomString(), i);
             topics.add(topic);
-            futures.add(benchmarkDriver.createTopic(topic.name, topic.partitions));
+            futures.add(benchmarkDriver.createTopic(topic, topicsInfo.numberOfPartitionsPerTopic));
         }
 
         futures.forEach(CompletableFuture::join);
 
         log.info("Created {} topics in {} ms", topics.size(), timer.elapsedMillis());
         return topics;
-    }
-
-    @Override
-    public void notifyTopicCreation(List<Topic> topics) {
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        for (Topic topic : topics) {
-            futures.add(benchmarkDriver.notifyTopicCreation(topic.name, topic.partitions));
-        }
-
-        futures.forEach(CompletableFuture::join);
     }
 
     @Override
@@ -228,8 +206,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
         Timer timer = new Timer();
 
         List<CompletableFuture<BenchmarkConsumer>> futures = consumerAssignment.topicsSubscriptions.stream()
-                .map(ts -> benchmarkDriver.createConsumer(ts.topic, ts.subscription, Optional.of(ts.partition), this))
-                .collect(toList());
+                .map(ts -> benchmarkDriver.createConsumer(ts.topic, ts.subscription, this)).collect(toList());
 
         futures.forEach(f -> consumers.add(f.join()));
         log.info("Created {} consumers in {} ms", consumers.size(), timer.elapsedMillis());
@@ -254,9 +231,12 @@ public class LocalWorker implements Worker, ConsumerCallback {
     AtomicLong totalAsyncTime = new AtomicLong();
     AtomicLong sent = new AtomicLong();
 
-    private void submitProducersToExecutor(List<BenchmarkProducer> producers, KeyDistributor keyDistributor,
-            byte[] payloadData) {
+    private void submitProducersToExecutor(List<BenchmarkProducer> producers, KeyDistributor keyDistributor, List<byte[]> payloads) {
         executor.submit(() -> {
+            int payloadCount = payloads.size();
+            Random r = new Random();
+            byte[] firstPayload = payloads.get(0);
+
             try {
                 while (!testCompleted) {
                     while (producersArePaused) {
@@ -269,6 +249,7 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
                     producers.forEach(producer -> {
                         rateLimiter.acquire();
+                        byte[] payloadData = payloadCount == 0 ? firstPayload : payloads.get(r.nextInt(payloadCount));
                         final long sendTime = System.nanoTime();
                         try {
                             producer.sendAsync(Optional.ofNullable(keyDistributor.next()), payloadData).handle((v, t) -> {
@@ -388,8 +369,17 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
     @Override
     public void messageReceived(byte[] data, long publishTimestamp) {
+        internalMessageReceived(data.length, publishTimestamp);
+    }
+
+    @Override
+    public void messageReceived(ByteBuffer data, long publishTimestamp) {
+        internalMessageReceived(data.remaining(), publishTimestamp);
+    }
+
+    public void internalMessageReceived(int size, long publishTimestamp) {
         messagesReceivedCounter.accumulate(1);
-        bytesReceivedCounter.accumulate(data.length);
+        bytesReceivedCounter.accumulate(size);
 
         // NOTE: PublishTimestamp is expected to be using the wall-clock time across
         // machines

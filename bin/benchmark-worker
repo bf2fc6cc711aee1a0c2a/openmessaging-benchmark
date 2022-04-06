@@ -24,9 +24,16 @@ else
     CLASSPATH=benchmark-framework/target/classes:`cat benchmark-framework/target/classpath.txt`
 fi
 
+if [ -z "$HEAP_OPTS" ]
+then
+    HEAP_OPTS="-Xms4G -Xmx4G"
+fi
+
+VM_MEM="${HEAP_OPTS} -XX:+UseG1GC"
+
 KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=0.0.0.0 -Djava.net.preferIPv4Stack=true"
-JVM_MEM="-XX:+UseG1GC"
 KAFKA_OPTS="-javaagent:driver-kafka/deploy/monitoring/jmx_exporter/jmx_prometheus_javaagent-0.13.0.jar=8082:driver-kafka/deploy/monitoring/jmx_exporter/metrics.yml"
+
 JVM_GC_LOG=" -XX:+PrintGCDetails -XX:+PrintGCApplicationStoppedTime  -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=5 -XX:GCLogFileSize=64m  -Xloggc:/dev/shm/benchmark-client-gc_%p.log"
 
 exec java -server $KAFKA_JMX_OPTS -cp $CLASSPATH $JVM_MEM $KAFKA_OPTS io.openmessaging.benchmark.worker.BenchmarkWorker "$@"

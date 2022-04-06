@@ -18,10 +18,8 @@
  */
 package io.openmessaging.benchmark.driver.artemis;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.activemq.artemis.api.core.ActiveMQException;
 import org.apache.activemq.artemis.api.core.client.ClientMessage;
@@ -51,9 +49,7 @@ public class ArtemisBenchmarkProducer implements BenchmarkProducer {
     @Override
     public CompletableFuture<Void> sendAsync(Optional<String> key, byte[] payload) {
         ClientMessage msg = session.createMessage(true /* durable */ );
-        Instant currentTime = Instant.now();
-        long currentTimeNanos = TimeUnit.SECONDS.toNanos(currentTime.getEpochSecond()) + currentTime.getNano();
-        msg.setTimestamp(currentTimeNanos);
+        msg.setTimestamp(System.currentTimeMillis());
         msg.getBodyBuffer().writeBytes(payload);
 
         CompletableFuture<Void> future = new CompletableFuture<>();

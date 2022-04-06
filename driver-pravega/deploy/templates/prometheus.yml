@@ -1,0 +1,137 @@
+#
+# Copyright (c) 2018 Sijie. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+---
+global:
+  scrape_interval:     10s # By default, scrape targets every 15 seconds.
+  evaluation_interval: 10s # By default, scrape targets every 15 seconds.
+  # scrape_timeout is set to the global default (10s).
+  external_labels:
+    # TODO: replace `<cluster-name>` with the right cluster name. E.g.
+    #
+    # cluster: test-cluster
+    cluster: local
+
+# Load and evaluate rules in these files every 'evaluation_interval' seconds.
+# rule_files:
+
+scrape_configs:
+<<<<<<< HEAD:driver-pulsar/deploy/templates/prometheus.yml
+=======
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'pravega'
+
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+>>>>>>> 1701fca656bfedf7f6eb6b30e32b6c0e41e81a91:driver-pravega/deploy/templates/prometheus.yml
+
+  - job_name: "proxy"
+    honor_labels: true # don't overwrite job & instance labels
+    static_configs:
+
+#
+# Node Exporter
+#
+
+      - targets:
+<<<<<<< HEAD:driver-pulsar/deploy/templates/prometheus.yml
+{% for worker in groups['client'] %}
+          - {{ hostvars[worker].private_ip }}:8080
+{% endfor %}
+
+  - job_name: "broker"
+    honor_labels: true # don't overwrite job & instance labels
+    static_configs:
+      - targets:
+{% for broker in groups['pulsar'] %}
+          - {{ hostvars[broker].private_ip }}:8080
+{% endfor %}
+
+  - job_name: "bookie"
+    honor_labels: true # don't overwrite job & instance labels
+    static_configs:
+      - targets:
+{% for broker in groups['pulsar'] %}
+          - {{ hostvars[broker].private_ip }}:8000
+=======
+{% for worker in groups['controller'] %}
+          - {{ hostvars[worker].private_ip }}:9100
+{% endfor %}
+        labels:
+          group: 'controller'
+
+      - targets:
+{% for worker in groups['bookkeeper'] %}
+          - {{ hostvars[worker].private_ip }}:9100
+{% endfor %}
+        labels:
+          group: 'segmentstore'
+
+      - targets:
+{% for worker in groups['bookkeeper'] %}
+          - {{ hostvars[worker].private_ip }}:9100
+{% endfor %}
+        labels:
+          group: 'bookkeeper'
+
+      - targets:
+{% for worker in groups['zookeeper'] %}
+          - {{ hostvars[worker].private_ip }}:9100
+{% endfor %}
+        labels:
+          group: 'zookeeper'
+
+      - targets:
+{% for worker in groups['client'] %}
+          - {{ hostvars[worker].private_ip }}:9100
+>>>>>>> 1701fca656bfedf7f6eb6b30e32b6c0e41e81a91:driver-pravega/deploy/templates/prometheus.yml
+{% endfor %}
+
+<<<<<<< HEAD:driver-pulsar/deploy/templates/prometheus.yml
+  - job_name: "zookeeper"
+    honor_labels: true
+    static_configs:
+      - targets:
+{% for zkserver in groups['zookeeper'] %}
+          - {{ hostvars[zkserver].private_ip }}:8000
+{% endfor %}
+
+  - job_name: "node_metrics"
+    honor_labels: true # don't overwrite job & instance labels
+    static_configs:
+      - targets:
+{% for broker in groups['pulsar'] %}
+          - {{ hostvars[broker].private_ip }}:9100
+{% endfor %}
+=======
+      - targets:
+{% for worker in groups['metrics'] %}
+          - {{ hostvars[worker].private_ip }}:9100
+{% endfor %}
+        labels:
+          group: 'metrics'
+
+#
+# BookKeeper
+#
+
+      - targets:
+{% for worker in groups['bookkeeper'] %}
+          - {{ hostvars[worker].private_ip }}:8000
+{% endfor %}
+        labels:
+          group: 'bookie'
+>>>>>>> 1701fca656bfedf7f6eb6b30e32b6c0e41e81a91:driver-pravega/deploy/templates/prometheus.yml
