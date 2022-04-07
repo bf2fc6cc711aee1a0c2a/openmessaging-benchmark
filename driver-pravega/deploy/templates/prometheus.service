@@ -5,7 +5,6 @@ After=network.target
 [Service]
 WorkingDirectory=/opt/prometheus
 ExecStart=/opt/prometheus/prometheus \
-    --web.enable-admin-api \
     --storage.tsdb.path=/opt/prometheus/data \
     --config.file=/opt/prometheus/prometheus.yml
 
