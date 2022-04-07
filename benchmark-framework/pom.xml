@@ -110,7 +110,7 @@
 			<version>${project.version}</version>
 		</dependency>
 
-		<dependency>
+		<!-- <dependency>
 			<groupId>${project.groupId}</groupId>
 			<artifactId>driver-kop</artifactId>
 			<version>${project.version}</version>
@@ -120,7 +120,7 @@
 			<groupId>${project.groupId}</groupId>
 			<artifactId>driver-pravega</artifactId>
 			<version>${project.version}</version>
-		</dependency>
+		</dependency> -->
 
 		<dependency>
 			<groupId>${project.groupId}</groupId>
