@@ -5,6 +5,15 @@ We try to make it easy, and all contributions, even the smaller ones, are more t
 This includes bug reports, fixes, documentation, examples...
 But first, read this page (including the small print at the end).
 
+---
+**NOTE**
+
+Although we love have you contribute to the project, note that this project is a fork of fork, so contribute with understanding that your contributions are not going to be pushed to the main project but only to this fork.
+
+From time to time we do pull in upstream changes into this fork.
+
+---
+
 ## Legal
 
 All original contributions to openmessaging-benchmark are licensed under the
@@ -44,12 +53,4 @@ All submissions, including submissions by project members, need to be reviewed b
 
 ### Coding Guidelines
 
- * We decided to disallow `@author` tags in the Javadoc: they are hard to maintain
- * Commits should be atomic and semantic. Please properly squash your pull requests before submitting them. Fixup commits can be used temporarily during the review process but things should be squashed at the end to have meaningful commits.
- We use merge commits so the GitHub Merge button cannot do that for us. If you don't know how to do that, just ask in your pull request, we will be happy to help!
-
-
-### Tests and documentation are not optional
-
-Don't forget to include tests in your pull requests.
-Also don't forget the documentation (reference documentation, javadoc...).
+ * Please properly squash your pull requests before submitting them. Fixup commits can be used temporarily during the review process but things should be squashed at the end to have meaningful commits.
