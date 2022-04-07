@@ -2,7 +2,7 @@
 You can use either of the Dockerfiles - `./docker/Dockerfile` or `./docker/Dockerfile.build` based on your needs.  
 
 ### `Dockerfile`
-Uses `openjdk-8` and takes `BENCHMARK_TARBALL` as an argument.  
+Uses `openjdk-11` and takes `BENCHMARK_TARBALL` as an argument.  
 While using this Dockerfile, you will need to build the project locally **first**.
 ```
 #> mvn build
