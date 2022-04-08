@@ -24,7 +24,6 @@ import static java.util.stream.Collectors.toList;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -49,7 +48,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.RateLimiter;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.openmessaging.benchmark.DriverConfiguration;
@@ -397,11 +395,10 @@ public class LocalWorker implements Worker, ConsumerCallback {
         messagesReceivedCounter.accumulate(1);
         bytesReceivedCounter.accumulate(size);
 
-        // NOTE: PublishTimestamp is expected to be using the wall-clock time across
-        // machines
-        Instant currentTime = Instant.now();
-        long currentTimeNanos = TimeUnit.SECONDS.toNanos(currentTime.getEpochSecond()) + currentTime.getNano();
-        long endToEndLatencyMicros = TimeUnit.NANOSECONDS.toMicros(currentTimeNanos - publishTimestamp);
+        // NOTE: PublishTimestamp is using the wall-clock time across machines
+        // - it was updated in later OMB versions to be millisecond, not nano, throughout
+        long now = System.currentTimeMillis();
+        long endToEndLatencyMicros = TimeUnit.MILLISECONDS.toMicros(now - publishTimestamp);
         if (endToEndLatencyMicros > 0) {
             endToEndCumulativeLatencyRecorder.recordValue(endToEndLatencyMicros);
             endToEndLatencyRecorder.recordValue(endToEndLatencyMicros);

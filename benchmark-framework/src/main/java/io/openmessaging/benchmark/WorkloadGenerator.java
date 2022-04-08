@@ -79,10 +79,13 @@ public class WorkloadGenerator implements AutoCloseable {
 
         if (workload.consumerPerSubscription > 0) {
           createConsumers(topics);
+        }
+
+        createProducers(topics);
+
+        if (workload.consumerPerSubscription > 0) {
           ensureTopicsAreReady();
         }
-        
-        createProducers(topics);
 
         if (workload.producerRate > 0) {
             targetPublishRate = workload.producerRate;
@@ -168,7 +171,7 @@ public class WorkloadGenerator implements AutoCloseable {
 
     while (true) {
             CountersStats stats = worker.getCountersStats();
-        
+
             if (stats.messagesReceived < expectedMessages) {
                 try {
                     Thread.sleep(100);
@@ -434,7 +437,7 @@ public class WorkloadGenerator implements AutoCloseable {
 
             long currentBacklog = workload.subscriptionsPerTopic * stats.totalMessagesSent
                     - stats.totalMessagesReceived;
-            
+
             log.info(
                     "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {} | Pub Delay Latency (us) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
                     rateFormat.format(publishRate), throughputFormat.format(publishThroughput),
@@ -450,9 +453,9 @@ public class WorkloadGenerator implements AutoCloseable {
                     dec.format(stats.publishDelayLatency.getValueAtPercentile(99)),
                     dec.format(stats.publishDelayLatency.getValueAtPercentile(99.9)),
                     throughputFormat.format(stats.publishDelayLatency.getMaxValue()));
-            
+
             log.info("connection.count {} | Consumer Latency (ms) avg: {}", counterStats.connectionCount, dec.format(counterStats.fetchLatencyAvg));
-            
+
             log.info("Avg Producer Throttle Time (ms) {} | Avg Producer Record Queue Time (ms) {}",
                     counterStats.produceThrottleTimeAvg,
                     counterStats.recordQueueTimeAvg);
@@ -498,6 +501,7 @@ public class WorkloadGenerator implements AutoCloseable {
             result.endToEndLatency999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.9)));
             result.endToEndLatency9999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.99)));
             result.endToEndLatencyMax.add(microsToMillis(stats.endToEndLatency.getMaxValue()));
+            result.connectionCount.add(counterStats.connectionCount);
 
             if (now >= testEndTime && !needToWaitForBacklogDraining) {
                 boolean complete = false;
@@ -517,7 +521,7 @@ public class WorkloadGenerator implements AutoCloseable {
                 if (!complete) {
                     throw new RuntimeException("Failed to collect aggregate latencies");
                 }
-                
+
                 log.info(
                         "----- Aggregated Pub Latency (ms) avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {} | Pub Delay (us)  avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {}",
                         dec.format(agg.publishLatency.getMean() / 1000.0),
