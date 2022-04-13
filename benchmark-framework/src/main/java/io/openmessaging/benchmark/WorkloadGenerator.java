@@ -22,6 +22,7 @@ import io.openmessaging.benchmark.utils.RandomGenerator;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -169,7 +170,7 @@ public class WorkloadGenerator implements AutoCloseable {
         // In this case we just publish 1 message and then wait for consumers to receive the data
         worker.probeProducers();
 
-    while (true) {
+	while (true) {
             CountersStats stats = worker.getCountersStats();
 
             if (stats.messagesReceived < expectedMessages) {
@@ -454,11 +455,7 @@ public class WorkloadGenerator implements AutoCloseable {
                     dec.format(stats.publishDelayLatency.getValueAtPercentile(99.9)),
                     throughputFormat.format(stats.publishDelayLatency.getMaxValue()));
 
-            log.info("connection.count {} | Consumer Latency (ms) avg: {}", counterStats.connectionCount, dec.format(counterStats.fetchLatencyAvg));
-
-            log.info("Avg Producer Throttle Time (ms) {} | Avg Producer Record Queue Time (ms) {}",
-                    counterStats.produceThrottleTimeAvg,
-                    counterStats.recordQueueTimeAvg);
+            printAdditionalStats(counterStats);
 
             log.info("E2E Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
                     dec.format(microsToMillis(stats.endToEndLatency.getMean())),
@@ -492,7 +489,6 @@ public class WorkloadGenerator implements AutoCloseable {
             result.publishDelayLatency9999pct.add(stats.publishDelayLatency.getValueAtPercentile(99.99));
             result.publishDelayLatencyMax.add(stats.publishDelayLatency.getMaxValue());
 
-
             result.endToEndLatencyAvg.add(microsToMillis(stats.endToEndLatency.getMean()));
             result.endToEndLatency50pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(50)));
             result.endToEndLatency75pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(75)));
@@ -501,7 +497,11 @@ public class WorkloadGenerator implements AutoCloseable {
             result.endToEndLatency999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.9)));
             result.endToEndLatency9999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.99)));
             result.endToEndLatencyMax.add(microsToMillis(stats.endToEndLatency.getMaxValue()));
-            result.connectionCount.add(counterStats.connectionCount);
+            counterStats.additionalMetrics.forEach((k, v) -> result.additionalMetrics.merge(k,
+                    new ArrayList<>(Arrays.asList(v.getValue())), (l1, l2) -> {
+                        l1.addAll(l2);
+                        return l1;
+                    }));
 
             if (now >= testEndTime && !needToWaitForBacklogDraining) {
                 boolean complete = false;
@@ -590,6 +590,12 @@ public class WorkloadGenerator implements AutoCloseable {
         return result;
     }
 
+    protected void printAdditionalStats(CountersStats counterStats) {
+        counterStats.additionalMetrics.forEach((k, v) -> {
+            log.info("{} ({}): {}", k, v.getUnits(), v.getValue());
+        });
+    }
+
     private static final DecimalFormat rateFormat = new PaddingDecimalFormat("0.0", 7);
     private static final DecimalFormat throughputFormat = new PaddingDecimalFormat("0.0", 4);
     private static final DecimalFormat dec = new PaddingDecimalFormat("0.0", 4);
@@ -602,5 +608,5 @@ public class WorkloadGenerator implements AutoCloseable {
         return timeInMicros / 1000.0;
     }
 
-    private static final Logger log = LoggerFactory.getLogger(WorkloadGenerator.class);
+    protected static final Logger log = LoggerFactory.getLogger(WorkloadGenerator.class);
 }

@@ -32,7 +32,9 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import io.openmessaging.benchmark.utils.UniformRateLimiter;
 import org.HdrHistogram.Recorder;
@@ -40,6 +42,7 @@ import org.apache.bookkeeper.stats.Counter;
 import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
+import org.apache.commons.collections.map.HashedMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +59,8 @@ import io.openmessaging.benchmark.driver.BenchmarkDriver;
 import io.openmessaging.benchmark.driver.BenchmarkProducer;
 import io.openmessaging.benchmark.driver.ConsumerCallback;
 import io.openmessaging.benchmark.driver.MetricsEnabled;
+import io.openmessaging.benchmark.driver.MetricsEnabled.Combiner;
+import io.openmessaging.benchmark.driver.MetricsEnabled.Metric;
 import io.openmessaging.benchmark.utils.RandomGenerator;
 import io.openmessaging.benchmark.utils.Timer;
 import io.openmessaging.benchmark.utils.distributor.KeyDistributor;
@@ -78,7 +83,6 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
     static class StatCounter {
         private final LongAdder total = new LongAdder();
-        private volatile long last;
         private final Counter counter;
 
         public StatCounter(Counter counter) {
@@ -92,14 +96,11 @@ public class LocalWorker implements Worker, ConsumerCallback {
 
         public void reset() {
             total.reset();
-            last = 0;
             counter.clear();
         }
 
         public long sinceLast() {
-            long old = last;
-            last = total.sum();
-            return last - old;
+            return total.sumThenReset();
         }
 
         public long getTotal() {
@@ -222,6 +223,8 @@ public class LocalWorker implements Worker, ConsumerCallback {
     public void startLoad(ProducerWorkAssignment producerWorkAssignment) {
         rateLimiter = new UniformRateLimiter(producerWorkAssignment.publishRate);
 
+        // use a thread per producer - the client performs blocking actions, so we should use a high degree of concurrency here
+        // TODO: cap the threads at a reasonable level
         producers.stream().map(Collections::singletonList).forEach(producers -> submitProducersToExecutor(producers,
                 KeyDistributor.build(producerWorkAssignment.keyDistributorType), producerWorkAssignment.payloadData));
 
@@ -233,9 +236,6 @@ public class LocalWorker implements Worker, ConsumerCallback {
         producers.forEach(producer -> producer.sendAsync(Optional.of("key"), new byte[10])
                 .thenRun(() -> messagesSentCounter.accumulate(1)));
     }
-
-    AtomicLong totalAsyncTime = new AtomicLong();
-    AtomicLong sent = new AtomicLong();
 
     private void submitProducersToExecutor(List<BenchmarkProducer> producers, KeyDistributor keyDistributor, List<byte[]> payloads) {
         executor.submit(() -> {
@@ -266,17 +266,21 @@ public class LocalWorker implements Worker, ConsumerCallback {
                                     publishLatencyStats.registerFailedEvent(microTime, TimeUnit.MICROSECONDS);
                                     publishErrorCounter.accumulate(1);
                                 } else {
-                                    messagesSentCounter.accumulate(1);
-                                    bytesSentCounter.accumulate(payloadData.length);
-                                    publishLatencyStats.registerSuccessfulEvent(microTime, TimeUnit.MICROSECONDS);
-                                    publishLatencyRecorder.recordValue(microTime);
-                                    cumulativePublishLatencyRecorder.recordValue(microTime);
-                                    onDemandPublishLatencyRecorder.recordValue(microTime);
-                                    
-                                    final long sendDelayMicros = TimeUnit.NANOSECONDS.toMicros(sendTime - intendedSendTime);
-                                    publishDelayLatencyRecorder.recordValue(sendDelayMicros);
-                                    cumulativePublishDelayLatencyRecorder.recordValue(sendDelayMicros);
-                                    publishDelayLatencyStats.registerSuccessfulEvent(sendDelayMicros, TimeUnit.MICROSECONDS);
+                                    try {
+                                      messagesSentCounter.accumulate(1);
+                                      bytesSentCounter.accumulate(payloadData.length);
+                                      publishLatencyStats.registerSuccessfulEvent(microTime, TimeUnit.MICROSECONDS);
+                                      publishLatencyRecorder.recordValue(microTime);
+                                      cumulativePublishLatencyRecorder.recordValue(microTime);
+                                      onDemandPublishLatencyRecorder.recordValue(microTime);
+
+                                      final long sendDelayMicros = TimeUnit.NANOSECONDS.toMicros(sendTime - intendedSendTime);
+                                      publishDelayLatencyRecorder.recordValue(sendDelayMicros);
+                                      cumulativePublishDelayLatencyRecorder.recordValue(sendDelayMicros);
+                                      publishDelayLatencyStats.registerSuccessfulEvent(sendDelayMicros, TimeUnit.MICROSECONDS);
+                                    } catch (Exception e) {
+                                      log.warn("Error capturing stats", e);
+                                    }
                                 }
                                 return null;
                             });
@@ -351,34 +355,56 @@ public class LocalWorker implements Worker, ConsumerCallback {
         stats.messagesReceived = messagesReceivedCounter.getTotal();
         stats.publishErrors = publishErrorCounter.getTotal();
         stats.consumerErrors = consumeErrorCounter.getTotal();
-
         stats.elapsedMillis = System.currentTimeMillis() - startCounter;
-
-        stats.fetchLatencyAvg = fetchBenchmarkMetric(MetricsEnabled.FETCH_LATENCY_AVG, this.consumers);
         stats.consumers = this.consumers.size();
-
-        stats.produceThrottleTimeAvg = fetchBenchmarkMetric(MetricsEnabled.PRODUCE_THROTTLE_TIME_AVG, this.producers);
         stats.producers = this.producers.size();
 
-        stats.recordQueueTimeAvg = fetchBenchmarkMetric(MetricsEnabled.RECORD_QUEUE_TIME_AVG, this.producers);
+        // collect additional metrics
+        Stream<MetricsEnabled> source = Stream.concat(consumers.stream(), producers.stream())
+                .filter(MetricsEnabled.class::isInstance)
+                .map(MetricsEnabled.class::cast);
+        processMetrics(stats, source);
 
-        stats.connectionCount = fetchConnectionCount(MetricsEnabled.CONNECTION_COUNT, this.producers)
-                + fetchConnectionCount(MetricsEnabled.CONNECTION_COUNT, this.consumers);
-
-        log.info("local worker - connection count = " + stats.connectionCount);
         return stats;
     }
 
-    private static Double fetchBenchmarkMetric(String metricName, Collection<?> list) {
-        return list.stream().filter(MetricsEnabled.class::isInstance).map(MetricsEnabled.class::cast)
-                .map(MetricsEnabled::supplyStats).map(s -> s.get(metricName)).filter(Objects::nonNull)
-                .collect(Collectors.averagingDouble(Double.class::cast));
-    }
+    static void processMetrics(CountersStats stats, Stream<MetricsEnabled> source) {
+        Map<String, List<Metric>> metrics = new LinkedHashMap<String, List<Metric>>();
 
-    private static double fetchConnectionCount(String metricName, Collection<?> list) {
-        return list.stream().filter(MetricsEnabled.class::isInstance).map(MetricsEnabled.class::cast)
-                .map(MetricsEnabled::supplyStats).map(s -> s.get(metricName)).filter(Objects::nonNull)
-                .collect(Collectors.summingDouble(Double.class::cast));
+        source.forEach(m -> m.supplyMetrics((k, v) -> metrics.merge(k, new ArrayList<>(Arrays.asList(v)), (l1, l2) -> {
+                    l1.addAll(l2);
+                    return l1;
+                })));
+        metrics.entrySet().stream().forEach(e -> {
+            MetricsEnabled.Combiner combiner = e.getValue().get(0).getCombiner();
+            switch (combiner) {
+            case AVERAGE:
+                stats.additionalMetrics.put(e.getKey(),
+                        new Metric(combiner,
+                                e.getValue()
+                                        .stream()
+                                        .map(Metric::getValue)
+                                        .collect(Collectors.averagingDouble(Double::doubleValue)), e.getValue().get(0).getUnits()));
+                break;
+            case MAX:
+                stats.additionalMetrics.put(e.getKey(),
+                        new Metric(combiner,
+                                e.getValue()
+                                        .stream()
+                                        .map(Metric::getValue).max(Double::compareTo).get(), e.getValue().get(0).getUnits()));
+                break;
+            case SUM:
+                stats.additionalMetrics.put(e.getKey(),
+                        new Metric(combiner,
+                                e.getValue()
+                                        .stream()
+                                        .map(Metric::getValue)
+                                        .collect(Collectors.summingDouble(Double::doubleValue)), e.getValue().get(0).getUnits()));
+                break;
+            default:
+                throw new IllegalStateException();
+            }
+        });
     }
 
     @Override

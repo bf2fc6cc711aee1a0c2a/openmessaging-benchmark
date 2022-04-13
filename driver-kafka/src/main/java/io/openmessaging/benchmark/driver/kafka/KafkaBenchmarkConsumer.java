@@ -18,34 +18,29 @@
  */
 package io.openmessaging.benchmark.driver.kafka;
 
-import io.openmessaging.benchmark.driver.BenchmarkConsumer;
-import io.openmessaging.benchmark.driver.ConsumerCallback;
-import io.openmessaging.benchmark.driver.MetricsEnabled;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
+
+import io.openmessaging.benchmark.driver.BenchmarkConsumer;
+import io.openmessaging.benchmark.driver.ConsumerCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
+public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
 
-import java.lang.management.ManagementFactory;
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.TreeMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-
-public class KafkaBenchmarkConsumer implements BenchmarkConsumer, MetricsEnabled {
-
-    private static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkConsumer.class);
+    static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkConsumer.class);
 
     private final KafkaConsumer<String, byte[]> consumer;
 
@@ -53,8 +48,6 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer, MetricsEnabled
     private final Future<?> consumerTask;
     private volatile boolean closing = false;
     private boolean autoCommit;
-    private String clientId;
-    private MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
     public KafkaBenchmarkConsumer(KafkaConsumer<String, byte[]> consumer,
                                   Properties consumerConfig,
@@ -87,36 +80,10 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer, MetricsEnabled
                         consumer.commitAsync(offsetMap, null);
                     }
                 } catch(Exception e){
-                    callback.exception(e);
                     log.error("exception occur while consuming message", e);
                 }
             }
         });
-    }
-
-    public KafkaBenchmarkConsumer clientId(String id) {
-      this.clientId = id;
-      return this;
-    }
-
-    @Override
-    public Map<String, Object> supplyStats() {
-        Map<String, Object> stats = new TreeMap<>();
-        try {
-            ObjectName fetchManagerName = new ObjectName("kafka.consumer:type=consumer-fetch-manager-metrics,client-id="+this.clientId);
-            Object obj = mbeanServer.getAttribute(fetchManagerName, MetricsEnabled.FETCH_LATENCY_AVG);
-            ObjectName consumerMetrics = new ObjectName("kafka.consumer:type=consumer-metrics,client-id="+this.clientId);
-            Object objConnectionCount = mbeanServer.getAttribute(consumerMetrics, MetricsEnabled.CONNECTION_COUNT);
-            if (obj instanceof Double && !((Double)obj).isNaN()) {
-                stats.put(MetricsEnabled.FETCH_LATENCY_AVG, obj);
-            }
-            if (objConnectionCount instanceof Double  && !((Double)objConnectionCount).isNaN()) {
-                stats.put(MetricsEnabled.CONNECTION_COUNT, objConnectionCount);
-            }
-        } catch (Exception e) {
-            log.error("exception fetching metrics", e);
-        }
-        return stats;
     }
 
     @Override

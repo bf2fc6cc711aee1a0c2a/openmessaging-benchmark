@@ -44,5 +44,8 @@ public interface ConsumerCallback {
      */
     void messageReceived(ByteBuffer payload, long publishTimestamp);
 
+    /**
+     * There was an error consuming a message.
+     */
     void exception(Exception e);
 }

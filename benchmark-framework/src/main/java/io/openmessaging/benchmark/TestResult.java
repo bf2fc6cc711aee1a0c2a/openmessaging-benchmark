@@ -19,6 +19,7 @@
 package io.openmessaging.benchmark;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -87,7 +88,7 @@ public class TestResult {
     public List<Double> endToEndLatency999pct = new ArrayList<>();
     public List<Double> endToEndLatency9999pct = new ArrayList<>();
     public List<Double> endToEndLatencyMax = new ArrayList<>();
-    public List<Double> connectionCount = new ArrayList<>();
+    public Map<String, List<Double>> additionalMetrics = new LinkedHashMap<>();
 
     public Map<Double, Double> aggregatedEndToEndLatencyQuantiles = new TreeMap<>();
 

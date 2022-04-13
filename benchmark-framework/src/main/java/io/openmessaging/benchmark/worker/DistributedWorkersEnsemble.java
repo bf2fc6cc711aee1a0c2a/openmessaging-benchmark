@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
@@ -50,6 +51,7 @@ import com.google.common.collect.Lists;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.openmessaging.benchmark.WorkloadGenerator;
+import io.openmessaging.benchmark.driver.MetricsEnabled;
 import io.openmessaging.benchmark.utils.ListPartition;
 import io.openmessaging.benchmark.worker.commands.ConsumerAssignment;
 import io.openmessaging.benchmark.worker.commands.CountersStats;
@@ -316,21 +318,18 @@ public class DistributedWorkersEnsemble implements Worker {
             stats.elapsedMillis += is.elapsedMillis;
             stats.consumerErrors += is.consumerErrors;
             stats.publishErrors += is.publishErrors;
-            stats.fetchLatencyAvg += is.fetchLatencyAvg;
-            stats.produceThrottleTimeAvg += is.produceThrottleTimeAvg;
-            stats.recordQueueTimeAvg += is.recordQueueTimeAvg;
-            stats.connectionCount += is.connectionCount;
             stats.producers += is.producers;
             stats.consumers += is.consumers;
         });
         stats.elapsedMillis /= workers.size();
-        if (stats.consumers != 0) {
-            stats.fetchLatencyAvg /= stats.consumers;
-        }
-        if (stats.producers != 0) {
-            stats.produceThrottleTimeAvg /= stats.producers;
-            stats.recordQueueTimeAvg /= stats.producers;
-        }
+
+        LocalWorker.processMetrics(stats, individualStats.stream().map(s -> new MetricsEnabled() {
+            @Override
+            public void supplyMetrics(BiConsumer<String, Metric> consumer) {
+                s.additionalMetrics.forEach((k, v) -> consumer.accept(k, v));
+            }
+        }));
+
         return stats;
     }
 
