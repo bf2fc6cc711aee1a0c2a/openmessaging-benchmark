@@ -18,16 +18,20 @@
  */
 package io.openmessaging.benchmark.worker.commands;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import io.openmessaging.benchmark.driver.MetricsEnabled.Metric;
+
 public class CountersStats {
     public long messagesSent;
     public long messagesReceived;
     public double elapsedMillis;
-    public double fetchLatencyAvg;
     public long publishErrors;
     public long consumerErrors;
-    public double produceThrottleTimeAvg;
-    public double recordQueueTimeAvg;
-    public double connectionCount;
     public int producers;
     public int consumers;
+
+    public Map<String, Metric> additionalMetrics = new LinkedHashMap<>();
+
 }

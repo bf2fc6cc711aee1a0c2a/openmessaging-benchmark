@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class KeyRoundRobin extends KeyDistributor {
 
-    private static AtomicInteger currentIndex = new AtomicInteger();
+    private static AtomicInteger currentIndex = new AtomicInteger((int)(Math.random()*UNIQUE_COUNT));
 
     @Override
     public String next() {

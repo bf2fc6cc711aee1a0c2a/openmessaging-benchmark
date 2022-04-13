@@ -24,7 +24,7 @@ import java.util.Random;
 
 public abstract class KeyDistributor {
 
-    private static final int UNIQUE_COUNT = 10_000;
+    static final int UNIQUE_COUNT = 10_000;
     private static final int KEY_BYTE_SIZE = 7;
 
     private static final String[] randomKeys = new String[UNIQUE_COUNT];

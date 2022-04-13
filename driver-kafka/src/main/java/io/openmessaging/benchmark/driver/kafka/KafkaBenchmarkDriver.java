@@ -18,13 +18,20 @@
  */
 package io.openmessaging.benchmark.driver.kafka;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.openmessaging.benchmark.driver.BenchmarkConsumer;
-import io.openmessaging.benchmark.driver.BenchmarkDriver;
-import io.openmessaging.benchmark.driver.BenchmarkProducer;
-import io.openmessaging.benchmark.driver.ConsumerCallback;
+import java.io.File;
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DeleteTopicsResult;
@@ -39,20 +46,14 @@ import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.StringReader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+
+import io.openmessaging.benchmark.driver.BenchmarkConsumer;
+import io.openmessaging.benchmark.driver.BenchmarkDriver;
+import io.openmessaging.benchmark.driver.BenchmarkProducer;
+import io.openmessaging.benchmark.driver.ConsumerCallback;
 
 public class KafkaBenchmarkDriver implements BenchmarkDriver {
 
@@ -66,7 +67,6 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
     private Properties consumerProperties;
 
     private AdminClient admin;
-    private static final AtomicInteger CONSUMER_CLIENT_ID_SEQUENCE = new AtomicInteger(1);
 
     @Override
     public void initialize(File configurationFile, StatsLogger statsLogger) throws IOException {
@@ -96,13 +96,13 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
             // List existing topics
             ListTopicsResult result = admin.listTopics();
             try {
-                List<String> topics = result.names().get().stream().filter(name -> name.startsWith(getTopicNamePrefix())).collect(Collectors.toList());
+                Set<String> topics = result.names().get();
                 // Delete all existing topics
                 DeleteTopicsResult deletes = admin.deleteTopics(topics);
                 deletes.all().get();
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
-                // don't throw an exception, this is issued against each worker, so some will fail
+                throw new IOException(e);
             }
         }
     }
@@ -128,14 +128,9 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
 
     @Override
     public CompletableFuture<BenchmarkProducer> createProducer(String topic) {
-        String clientId = "producer-"+topic+CONSUMER_CLIENT_ID_SEQUENCE.getAndIncrement();
-
-        Properties properties = new Properties();
-        producerProperties.forEach((key, value) -> properties.put(key, value));
-        properties.put(ProducerConfig.CLIENT_ID_CONFIG, clientId);
-
-        KafkaProducer<String, byte[]> kafkaProducer = new KafkaProducer<>(properties);
-        BenchmarkProducer benchmarkProducer = new KafkaBenchmarkProducer(kafkaProducer, topic).clientId(clientId);
+        Properties newProducerProperties = newProducerProperties(topic);
+        KafkaProducer<String, byte[]> kafkaProducer = new KafkaProducer<>(newProducerProperties);
+        BenchmarkProducer benchmarkProducer = newProducer(kafkaProducer, newProducerProperties, topic);
         try {
             // Add to producer list to close later
             producers.add(benchmarkProducer);
@@ -148,20 +143,24 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
         }
     }
 
+    protected Properties newProducerProperties(String topic) {
+        Properties result = new Properties();
+        result.putAll(producerProperties);
+        return result;
+    }
+
+    protected KafkaBenchmarkProducer newProducer(KafkaProducer<String, byte[]> kafkaProducer, Properties properties, String topic) {
+        return new KafkaBenchmarkProducer(kafkaProducer, topic);
+    }
+
     @Override
     public CompletableFuture<BenchmarkConsumer> createConsumer(String topic, String subscriptionName,
             ConsumerCallback consumerCallback) {
-
-        String clientId = "consumer-"+subscriptionName+CONSUMER_CLIENT_ID_SEQUENCE.getAndIncrement();
-        Properties properties = new Properties();
-        consumerProperties.forEach((key, value) -> properties.put(key, value));
-        properties.put(ConsumerConfig.GROUP_ID_CONFIG, subscriptionName);
-        properties.put(ConsumerConfig.CLIENT_ID_CONFIG, clientId);
-
+        Properties properties = newConsumerProperties(subscriptionName);
         KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(properties);
         try {
             consumer.subscribe(Arrays.asList(topic));
-            return CompletableFuture.completedFuture(new KafkaBenchmarkConsumer(consumer,consumerProperties,consumerCallback).clientId(clientId));
+            return CompletableFuture.completedFuture(newConsumer(consumer, properties, consumerCallback));
         } catch (Throwable t) {
             consumer.close();
             CompletableFuture<BenchmarkConsumer> future = new CompletableFuture<>();
@@ -169,6 +168,18 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
             return future;
         }
 
+    }
+
+    protected Properties newConsumerProperties(String subscriptionName) {
+        Properties properties = new Properties();
+        properties.putAll(consumerProperties);
+        properties.put(ConsumerConfig.GROUP_ID_CONFIG, subscriptionName);
+        return properties;
+    }
+
+    protected KafkaBenchmarkConsumer newConsumer(KafkaConsumer<String, byte[]> consumer, Properties properties,
+            ConsumerCallback consumerCallback) {
+        return new KafkaBenchmarkConsumer(consumer,properties,consumerCallback);
     }
 
     @Override

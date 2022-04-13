@@ -18,16 +18,49 @@
  */
 package io.openmessaging.benchmark.driver;
 
-import java.util.Collections;
-import java.util.Map;
+import java.util.function.BiConsumer;
 
 public interface MetricsEnabled {
-    public static final String FETCH_LATENCY_AVG = "fetch-latency-avg";
-    public static final String PRODUCE_THROTTLE_TIME_AVG = "produce-throttle-time-avg";
-    public static final String RECORD_QUEUE_TIME_AVG = "record-queue-time-avg";
-    public static final String CONNECTION_COUNT = "connection-count";
 
-    default Map<String, Object> supplyStats() {
-        return Collections.emptyMap();
+    public enum Combiner {
+        SUM,
+        MAX,
+        /**
+         * WARNING: when using multiple producers/consumers per worker or multiple workers
+         * this will take an average of the averages - which may not be representative when
+         * the value is not uniform.
+         *
+         * Typically the raw state will be a running average, not reset per period
+         */
+        AVERAGE,
+    }
+
+    public static class Metric {
+        Combiner combiner;
+        double value;
+        String units;
+
+        public Metric(Combiner combiner, double value, String units) {
+            this.combiner = combiner;
+            this.value = value;
+            this.units = units;
+        }
+
+        public Combiner getCombiner() {
+            return combiner;
+        }
+
+        public double getValue() {
+            return value;
+        }
+
+        public String getUnits() {
+            return units;
+        }
+
+    }
+
+    default void supplyMetrics(BiConsumer<String, Metric> consumer) {
+
     }
 }
