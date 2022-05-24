@@ -57,10 +57,10 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b release
           sed 's/{{TOKEN}}/${{ secrets.BF2_GITHUB_TOKEN }}/g' settings.xml > ~/settings.xml
-          mvn -B release:prepare -s ~/settings.xml -P docker -DreleaseVersion=${{ steps.metadata.outputs.current-version }} -DdevelopmentVersion=${{ steps.metadata.outputs.next-version }} -Ddocker.repo=${{ secrets.IMAGE_REPO_HOSTNAME }} -Ddocker.organization=${{ secrets.IMAGE_REPO_NAMESPACE }}
+          mvn -B release:prepare -DpushChanges=false -s ~/settings.xml -P docker -DreleaseVersion=${{ steps.metadata.outputs.current-version }} -DdevelopmentVersion=${{ steps.metadata.outputs.next-version }} -Ddocker.repo=${{ secrets.IMAGE_REPO_HOSTNAME }} -Ddocker.organization=${{ secrets.IMAGE_REPO_NAMESPACE }}
           git checkout ${{github.base_ref}}
           git rebase release
-          mvn -B release:perform
+          mvn -B release:perform -DlocalCheckout=true
         
     - name: docker push
       run: |
