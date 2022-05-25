@@ -23,7 +23,7 @@
 
 	<groupId>io.openmessaging.benchmark</groupId>
 	<artifactId>messaging-benchmark</artifactId>
-	<version>0.0.1</version>
+	<version>0.0.2-SNAPSHOT</version>
 	<name>Messaging Benchmark</name>
 	<packaging>pom</packaging>
 
@@ -68,7 +68,7 @@
     <scm>
         <connection>scm:git:git@github.com:bf2fc6cc711aee1a0c2a/openmessaging-benchmark.git</connection>
         <developerConnection>scm:git:git@github.com:bf2fc6cc711aee1a0c2a/openmessaging-benchmark.git</developerConnection>
-        <tag>messaging-benchmark-0.0.1</tag>
+        <tag>HEAD</tag>
     </scm>
     
 	<build>
