@@ -50,7 +50,7 @@
     <server>
       <id>github</id>
       <username>bf2-ci-bot</username>
-      <password>${github.token}</password>
+      <password>{{TOKEN}}</password>
     </server>
   </servers>
 </settings>
