@@ -102,7 +102,7 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
                 deletes.all().get();
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
-                throw new IOException(e);
+                // don't throw an exception, this is issued against each worker, so some will fail
             }
         }
     }

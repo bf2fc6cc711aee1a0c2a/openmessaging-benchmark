@@ -39,6 +39,10 @@ public interface MetricsEnabled {
         Combiner combiner;
         double value;
         String units;
+        
+        public Metric() {
+            
+        }
 
         public Metric(Combiner combiner, double value, String units) {
             this.combiner = combiner;

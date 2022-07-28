@@ -36,7 +36,6 @@ import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
 import org.HdrHistogram.Histogram;
-import org.apache.pulsar.common.util.FutureUtil;
 import org.asynchttpclient.AsyncHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
