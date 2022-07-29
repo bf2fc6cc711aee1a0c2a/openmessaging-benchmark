@@ -300,8 +300,8 @@ public class WorkloadGenerator implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        worker.stopAll();
         executor.shutdownNow();
+        worker.stopAll();
     }
 
     private void createConsumers(List<String> topics) throws IOException {

@@ -57,7 +57,7 @@ public class KafkaBenchmarkConsumerWithMetrics extends KafkaBenchmarkConsumer im
                 consumer.accept(KafkaBenchmarkDriverWithMetrics.CONNECTION_COUNT, new Metric(Combiner.SUM, (double)objConnectionCount, "connections"));
             }
         } catch (Exception e) {
-            log.error("exception fetching metrics", e);
+            log.error("exception fetching metrics {}", e.getMessage());
         }
     }
 
