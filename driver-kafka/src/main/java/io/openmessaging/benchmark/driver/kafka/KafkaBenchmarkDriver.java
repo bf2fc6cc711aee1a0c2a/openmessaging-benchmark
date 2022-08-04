@@ -54,8 +54,8 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
 
     private Config config;
 
-    private List<BenchmarkProducer> producers = Collections.synchronizedList(new ArrayList<>());
-    private List<BenchmarkConsumer> consumers = Collections.synchronizedList(new ArrayList<>());
+    private List<KafkaBenchmarkProducer> producers = Collections.synchronizedList(new ArrayList<>());
+    private List<KafkaBenchmarkConsumer> consumers = Collections.synchronizedList(new ArrayList<>());
 
     private Properties topicProperties;
     private Properties producerProperties;
@@ -125,7 +125,7 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
     public CompletableFuture<BenchmarkProducer> createProducer(String topic) {
         Properties newProducerProperties = newProducerProperties(topic);
         KafkaProducer<String, byte[]> kafkaProducer = new KafkaProducer<>(newProducerProperties);
-        BenchmarkProducer benchmarkProducer = newProducer(kafkaProducer, newProducerProperties, topic);
+        KafkaBenchmarkProducer benchmarkProducer = newProducer(kafkaProducer, newProducerProperties, topic);
         try {
             // Add to producer list to close later
             producers.add(benchmarkProducer);
@@ -179,12 +179,16 @@ public class KafkaBenchmarkDriver implements BenchmarkDriver {
 
     @Override
     public void close() throws Exception {
-        for (BenchmarkProducer producer : producers) {
+        for (KafkaBenchmarkProducer producer : producers) {
             producer.close();
         }
 
-        for (BenchmarkConsumer consumer : consumers) {
+        for (KafkaBenchmarkConsumer consumer : consumers) {
             consumer.close();
+        }
+
+        for (KafkaBenchmarkConsumer consumer : consumers) {
+            consumer.awaitClose();
         }
         admin.close();
     }

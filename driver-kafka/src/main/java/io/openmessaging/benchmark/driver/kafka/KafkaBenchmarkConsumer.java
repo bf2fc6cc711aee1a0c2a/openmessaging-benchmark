@@ -37,8 +37,6 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
 
     static final Logger log = LoggerFactory.getLogger(KafkaBenchmarkConsumer.class);
 
-    private final KafkaConsumer<String, byte[]> consumer;
-
     private final ExecutorService executor;
     private final Future<?> consumerTask;
     private volatile boolean closing = false;
@@ -54,30 +52,33 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
                                   Properties consumerConfig,
                                   ConsumerCallback callback,
                                   long pollTimeoutMs) {
-        this.consumer = consumer;
         this.executor = Executors.newSingleThreadExecutor();
         this.autoCommit= Boolean.valueOf((String)consumerConfig.getOrDefault(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,"false"));
         this.consumerTask = this.executor.submit(() -> {
-            while (!closing) {
-                try {
-                    ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(pollTimeoutMs));
+            try {
+                while (!closing) {
+                    try {
+                        ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMillis(pollTimeoutMs));
 
-                    Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
-                    for (ConsumerRecord<String, byte[]> record : records) {
-                        callback.messageReceived(record.value(), record.timestamp());
+                        Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap<>();
+                        for (ConsumerRecord<String, byte[]> record : records) {
+                            callback.messageReceived(record.value(), record.timestamp());
 
-                        offsetMap.put(new TopicPartition(record.topic(), record.partition()),
-                            new OffsetAndMetadata(record.offset()+1));
+                            offsetMap.put(new TopicPartition(record.topic(), record.partition()),
+                                new OffsetAndMetadata(record.offset()+1));
+                        }
+
+                        if (!autoCommit&&!offsetMap.isEmpty()) {
+                            // Async commit all messages polled so far
+                            consumer.commitAsync(offsetMap, null);
+                        }
+                    } catch(Exception e){
+                        log.error("exception occur while consuming message", e);
+                        callback.exception(e);
                     }
-
-                    if (!autoCommit&&!offsetMap.isEmpty()) {
-                        // Async commit all messages polled so far
-                        consumer.commitAsync(offsetMap, null);
-                    }
-                } catch(Exception e){
-                    log.error("exception occur while consuming message", e);
-                    callback.exception(e);
                 }
+            } finally {
+                consumer.close();
             }
         });
     }
@@ -86,8 +87,10 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
     public void close() throws Exception {
         closing = true;
         executor.shutdown();
-        consumerTask.get();
-        consumer.close();
+    }
+
+    public void awaitClose() throws Exception {
+        this.consumerTask.get();
     }
 
 }
