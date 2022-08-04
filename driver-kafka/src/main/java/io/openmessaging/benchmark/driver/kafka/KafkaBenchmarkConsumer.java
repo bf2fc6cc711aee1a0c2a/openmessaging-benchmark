@@ -76,6 +76,7 @@ public class KafkaBenchmarkConsumer implements BenchmarkConsumer {
                     }
                 } catch(Exception e){
                     log.error("exception occur while consuming message", e);
+                    callback.exception(e);
                 }
             }
         });
